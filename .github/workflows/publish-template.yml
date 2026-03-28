@@ -68,10 +68,9 @@ jobs:
           mkdir -p "$TEMPLATE_SRC_DIR"
 
           cp "$GITHUB_WORKSPACE/main.tf" "$TEMPLATE_SRC_DIR/"
-          cp "$GITHUB_WORKSPACE/cloud-init.yaml.tftpl" "$TEMPLATE_SRC_DIR/"
-          cp "$GITHUB_WORKSPACE/network_config.cfg" "$TEMPLATE_SRC_DIR/"
           cp "$GITHUB_WORKSPACE/secrets.auto.tfvars" "$TEMPLATE_SRC_DIR/"
           cp "$GITHUB_WORKSPACE/README.md" "$TEMPLATE_SRC_DIR/"
+          cp -r "$GITHUB_WORKSPACE/images/" "$TEMPLATE_SRC_DIR/"
           
           ls -la "$TEMPLATE_SRC_DIR"
           coder templates push "$TEMPLATE_NAME" --directory "$TEMPLATE_SRC_DIR" --activate=false --name ${{ steps.name.outputs.version_name }} --message "${{ steps.message.outputs.pr_title }}" --ignore-lockfile --yes
