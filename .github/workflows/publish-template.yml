@@ -1,0 +1,82 @@
+name: Test and Publish Coder Template
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test-and-publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+    env:
+      TEMPLATE_NAME: "podman"
+    steps:
+      - name: Tailscale
+        uses: tailscale/github-action@v4
+        with:
+            oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+            oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+            tags: tag:ci,tag:ci-coder
+            ping: coder
+    
+      - name: Remove Tailscale DNS
+        run: |
+          sudo tailscale set --accept-dns=false
+        
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Terraform secrets file
+        run: |
+          cat > secrets.auto.tfvars <<EOF
+          tailscale_auth_key = "${{ secrets.TAILSCALE_AUTH_KEY }}"
+          EOF
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: latest
+
+      - name: Set up Coder CLI
+        uses: coder/setup-action@v1
+        with:
+          access_url: "http://100.96.35.98:7080"
+          coder_session_token: ${{ secrets.CODER_SESSION_TOKEN }}
+
+      - name: Validate Terraform template
+        run: terraform init && terraform validate
+
+      - name: Get short commit SHA to use as template version name
+        id: name
+        run: echo "version_name=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Get latest commit title to use as template version description
+        id: message
+        run:
+          echo "pr_title=$(git log --format=%s -n 1 ${{ github.sha }})" >> $GITHUB_OUTPUT
+
+      - name: Push template to Coder
+        run: |
+          pwd
+          ls -la
+          TEMPLATE_SRC_DIR="$RUNNER_TEMP/template-src"
+          rm -rf "$TEMPLATE_SRC_DIR"
+          mkdir -p "$TEMPLATE_SRC_DIR"
+
+          cp "$GITHUB_WORKSPACE/main.tf" "$TEMPLATE_SRC_DIR/"
+          cp "$GITHUB_WORKSPACE/cloud-init.yaml.tftpl" "$TEMPLATE_SRC_DIR/"
+          cp "$GITHUB_WORKSPACE/network_config.cfg" "$TEMPLATE_SRC_DIR/"
+          cp "$GITHUB_WORKSPACE/secrets.auto.tfvars" "$TEMPLATE_SRC_DIR/"
+          cp "$GITHUB_WORKSPACE/README.md" "$TEMPLATE_SRC_DIR/"
+          
+          ls -la "$TEMPLATE_SRC_DIR"
+          coder templates push "$TEMPLATE_NAME" --directory "$TEMPLATE_SRC_DIR" --activate=false --name ${{ steps.name.outputs.version_name }} --message "${{ steps.message.outputs.pr_title }}" --ignore-lockfile --yes
+
+      - name: Promote template version
+        if: success()
+        run: |
+          coder template version promote --template=$TEMPLATE_NAME --template-version=${{ steps.name.outputs.version_name }}
