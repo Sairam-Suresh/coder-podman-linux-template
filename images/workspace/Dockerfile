@@ -16,16 +16,13 @@ RUN apt-get update && \
     pipx \
     python3 \
     python3-pip \
-    software-properties-common \
     sudo \
     unzip \
     vim \
     wget \
     rsync \
-    iproute2 && \
-# Install latest Git using their official PPA
-    add-apt-repository ppa:git-core/ppa && \
-    apt-get install --yes git \
+    iproute2 \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Generate the desired locale (en_US.UTF-8)
@@ -48,6 +45,7 @@ RUN useradd coder \
 RUN apt-get update && apt-get install -y \
     podman \
     fuse-overlayfs \
+    podman-compose \
     uidmap \
     && rm -rf /var/lib/apt/lists/*
 
@@ -66,6 +64,9 @@ ADD https://raw.githubusercontent.com/containers/image_build/refs/heads/main/pod
 # 5. Fix permissions for the 'coder' user, chmod containers.conf, and adjust storage.conf to enable Fuse storage
 RUN chown coder:coder -R /home/coder && \
     chmod 644 /etc/containers/containers.conf && \
+    mkdir -p /etc/containers && \
+    touch /etc/containers/storage.conf && \
+    chmod 644 /etc/containers/storage.conf && \
     sed -i -e 's|^#mount_program|mount_program|g' \
            -e '/additionalimage.*/a "/var/lib/shared",' \
            -e 's|^mountopt[[:space:]]*=.*$|mountopt = "nodev,fsync=0"|g' \
