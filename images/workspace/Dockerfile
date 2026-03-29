@@ -66,9 +66,6 @@ RUN apt-get update && apt-get install -y \
 RUN echo "coder:10000:5000" > /etc/subuid && \
     echo "coder:10000:5000" > /etc/subgid
 
-# 3. Define volumes mapped to the new 'coder' user
-VOLUME /var/lib/containers
-VOLUME /home/coder/.local/share/containers
 
 # 4. Add configuration files directly to the 'coder' user's config path
 ADD https://raw.githubusercontent.com/containers/image_build/refs/heads/main/podman/containers.conf /etc/containers/containers.conf
@@ -103,6 +100,13 @@ RUN chown coder:coder -R /home/coder && \
     fi && \
     chmod 644 /etc/containers/storage.conf
 
+# Setup internal Podman to pass subscriptions down from host to internal container
+RUN printf '/run/secrets/etc-pki-entitlement:/run/secrets/etc-pki-entitlement\n/run/secrets/rhsm:/run/secrets/rhsm\n' > /etc/containers/mounts.conf
+
+# Note VOLUME options must always happen after the chown call above
+VOLUME /var/lib/containers
+VOLUME /home/coder/.local/share/containers
+
 # 6. Set up shared directories and lock files
 RUN mkdir -p /var/lib/shared/overlay-images \
              /var/lib/shared/overlay-layers \
@@ -113,8 +117,9 @@ RUN mkdir -p /var/lib/shared/overlay-images \
           /var/lib/shared/vfs-images/images.lock \
           /var/lib/shared/vfs-layers/layers.lock
 
-ENV _CONTAINERS_USERNS_CONFIGURED=""
-ENV DOCKER_HOST=unix:///run/user/1000/podman/podman.sock
+ENV _CONTAINERS_USERNS_CONFIGURED="" \
+    DOCKER_HOST=unix:///run/user/1000/podman/podman.sock \
+    BUILDAH_ISOLATION=chroot
 
 USER coder
 
