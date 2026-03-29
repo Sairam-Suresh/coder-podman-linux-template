@@ -388,6 +388,7 @@ resource "docker_image" "dns2socks" {
   # Only rebuild if files change
   triggers = {
     dockerfile_hash  = filesha256("${path.module}/images/dns2socks/Dockerfile")
+    entrypoint_hash  = filesha256("${path.module}/images/dns2socks/entrypoint.sh")
   }
 }
 
@@ -405,7 +406,6 @@ resource "docker_image" "base_workspace" {
   # Only rebuild if files change
   triggers = {
     dockerfile_hash  = filesha256("${path.module}/images/workspace/Dockerfile")
-    entrypoint_hash  = filesha256("${path.module}/images/workspace/entrypoint.sh")
   }
 }
 
