@@ -21,7 +21,7 @@ locals {
   workdir     = "/home/coder/${local.folder_name}"
   
   # Select container image based on desktop environment parameter
-  container_image = data.coder_parameter.install_de.value == "true" ? "codercom/enterprise-desktop:ubuntu" : "codercom/enterprise-base:ubuntu"
+  container_image = data.coder_parameter.install_de.value == "true" ? "codercom/enterprise-desktop:ubuntu" : docker_image.base_workspace.image_id
 }
 
 variable "docker_socket" {
@@ -389,6 +389,24 @@ resource "docker_image" "dns2socks" {
   triggers = {
     dockerfile_hash  = filesha256("${path.module}/images/dns2socks/Dockerfile")
     entrypoint_hash  = filesha256("${path.module}/images/dns2socks/entrypoint.sh")
+  }
+}
+
+# Build the workspace (no desktop) image if it doesn't exist (persistent across workspace deletions)
+resource "docker_image" "base_workspace" {
+  name = "base_workspace:local"
+  keep_locally = true  # Don't delete on workspace destruction
+  
+  build {
+    context    = "${path.module}/images/workspace"
+    dockerfile = "Dockerfile"
+    tag        = ["base_workspace:local"]
+  }
+
+  # Only rebuild if files change
+  triggers = {
+    dockerfile_hash  = filesha256("${path.module}/images/workspace/Dockerfile")
+    entrypoint_hash  = filesha256("${path.module}/images/workspace/entrypoint.sh")
   }
 }
 
