@@ -63,8 +63,8 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Create the 'coder' user with a home directory and configure subuid/subgid
-RUN echo "coder:10000:5000" > /etc/subuid && \
-    echo "coder:10000:5000" > /etc/subgid
+RUN echo -e "root:1:65535\ncoder:1:999\ncoder:1001:64535" > /etc/subuid && \
+    echo -e "root:1:65535\ncoder:1:999\ncoder:1001:64535" > /etc/subgid
 
 
 # 4. Add configuration files directly to the 'coder' user's config path
@@ -123,4 +123,4 @@ ENV _CONTAINERS_USERNS_CONFIGURED="" \
 
 USER coder
 
-RUN pipx ensurepath # adds user's bin directory to PATH
+RUN pipx ensurepath
