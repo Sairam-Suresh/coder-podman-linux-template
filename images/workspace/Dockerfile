@@ -60,8 +60,8 @@ VOLUME /var/lib/containers
 VOLUME /home/coder/.local/share/containers
 
 # 4. Add configuration files directly to the 'coder' user's config path
-ADD https://raw.githubusercontent.com/containers/libpod/master/contrib/podmanimage/stable/containers.conf /etc/containers/containers.conf
-ADD https://raw.githubusercontent.com/containers/libpod/master/contrib/podmanimage/stable/podman-containers.conf /home/coder/.config/containers/containers.conf
+ADD https://raw.githubusercontent.com/containers/image_build/refs/heads/main/podman/containers.conf /etc/containers/containers.conf
+ADD https://raw.githubusercontent.com/containers/image_build/refs/heads/main/podman/podman-containers.conf /home/coder/.config/containers/containers.conf
 
 # 5. Fix permissions for the 'coder' user, chmod containers.conf, and adjust storage.conf to enable Fuse storage
 RUN chown coder:coder -R /home/coder && \
