@@ -123,4 +123,7 @@ ENV _CONTAINERS_USERNS_CONFIGURED="" \
 
 USER coder
 
+# Ensure pipx can create its log/state directory as root before switching user
+RUN mkdir -p /home/coder/.local/state && chown -R coder:coder /home/coder/.local || true
+
 RUN pipx ensurepath
