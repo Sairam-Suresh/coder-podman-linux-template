@@ -8,12 +8,7 @@ RUN apt-get update && \
     apt-get install --yes --no-install-recommends --no-install-suggests \
     bash \
     build-essential \
-    containerd.io \
     curl \
-    docker-ce \
-    docker-ce-cli \
-    docker-buildx-plugin \
-    docker-compose-plugin \
     htop \
     jq \
     locales \
@@ -23,8 +18,6 @@ RUN apt-get update && \
     python3-pip \
     software-properties-common \
     sudo \
-    systemd \
-    systemd-sysv \
     unzip \
     vim \
     wget \
@@ -47,7 +40,6 @@ ENV LC_ALL=en_US.UTF-8
 RUN useradd coder \
     --create-home \
     --shell=/bin/bash \
-    --groups=docker \
     --uid=1000 \
     --user-group && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
