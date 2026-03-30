@@ -563,7 +563,7 @@ resource "docker_container" "workspace" {
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
     echo "Waiting for https://homelab.tail4ef781.ts.net/ to return HTTP 200..."
-    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 https://homelab.tail4ef781.ts.net/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' https://homelab.tail4ef781.ts.net/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
       echo "Waiting for homelab.tail4ef781.ts.net to return 200..."
       sleep 1
     done
@@ -603,15 +603,28 @@ resource "docker_container" "workspace" {
     
     echo "Certificates configured at $CERT_DIR/ca-bundle.crt"
 
-    # If desktop environment is enabled, ensure KasmVNC has GPU settings.
-    # Create a user config fallback and run a background patcher that will
-    # merge the GPU settings into /etc/kasmvnc/kasmvnc.yaml if the module writes it.
-        # If desktop environment is enabled, configure KasmVNC to use hardware acceleration
+    # If desktop environment is enabled, write KasmVNC config to the user's home config
     if [ "$${INSTALL_DE}" = "true" ]; then
-      echo "Configuring KasmVNC settings at $HOME/.vnc/kasmvnc.yaml"
+      echo "Writing KasmVNC config to $HOME/.vnc/kasmvnc.yaml"
       mkdir -p "$HOME/.vnc"
       cat > "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
+network:
+  protocol: http
+  interface: 127.0.0.1
+  websocket_port: 6800
+  ssl:
+    require_ssl: false
+    pem_certificate:
+    pem_key:
+  udp:
+    public_ip: 127.0.0.1
 
+desktop:
+  gpu:
+    hw3d: true
+    drinode: /dev/dri/renderD128
+YAML
+    fi
     # Now start the Coder agent (which will connect and then run startup_script)
     exec sh -c '${coder_agent.main[count.index].init_script}'
   EOT
