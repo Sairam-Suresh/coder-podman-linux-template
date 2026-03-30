@@ -632,6 +632,7 @@ resource "docker_container" "PinP" {
 
   security_opts = ["label:disable"]
   command = ["podman", "system", "service", "--time", "0", "unix:///run/user/1000/podman/podman.sock"]
+  entrypoint = ["sh", "-c"]
 
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"
