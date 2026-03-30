@@ -606,66 +606,11 @@ resource "docker_container" "workspace" {
     # If desktop environment is enabled, ensure KasmVNC has GPU settings.
     # Create a user config fallback and run a background patcher that will
     # merge the GPU settings into /etc/kasmvnc/kasmvnc.yaml if the module writes it.
+        # If desktop environment is enabled, configure KasmVNC to use hardware acceleration
     if [ "$${INSTALL_DE}" = "true" ]; then
-      echo "Preparing KasmVNC user config at $HOME/.vnc/kasmvnc.yaml"
+      echo "Configuring KasmVNC settings at $HOME/.vnc/kasmvnc.yaml"
       mkdir -p "$HOME/.vnc"
       cat > "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
-network:
-  protocol: http
-  interface: 127.0.0.1
-  websocket_port: 6800
-  ssl:
-    require_ssl: false
-    pem_certificate:
-    pem_key:
-  udp:
-    public_ip: 127.0.0.1
-
-desktop:
-  gpu:
-    hw3d: true
-    drinode: /dev/dri/renderD128
-YAML
-
-      # Background task: wait for system config and append GPU settings if needed.
-      (
-        for i in $(seq 1 60); do
-          if [ -f /etc/kasmvnc/kasmvnc.yaml ]; then
-            break
-          fi
-          sleep 1
-        done
-
-        if [ -f /etc/kasmvnc/kasmvnc.yaml ]; then
-          echo "System KasmVNC config found at /etc/kasmvnc/kasmvnc.yaml; attempting merge"
-          if sudo -n true 2>/dev/null; then
-            if ! sudo grep -qE '^[[:space:]]*desktop:' /etc/kasmvnc/kasmvnc.yaml >/dev/null 2>&1; then
-              echo "Appending GPU settings to /etc/kasmvnc/kasmvnc.yaml"
-              sudo tee -a /etc/kasmvnc/kasmvnc.yaml >/dev/null <<'YAML'
-desktop:
-  gpu:
-    hw3d: true
-    drinode: /dev/dri/renderD128
-YAML
-            else
-              echo "System KasmVNC config already contains desktop/gpu settings; skipping"
-            fi
-          else
-            echo "No passwordless sudo; ensuring user config contains GPU settings"
-            if ! grep -qE '^[[:space:]]*desktop:' "$HOME/.vnc/kasmvnc.yaml" >/dev/null 2>&1; then
-              cat >> "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
-desktop:
-  gpu:
-    hw3d: true
-    drinode: /dev/dri/renderD128
-YAML
-            fi
-          fi
-        else
-          echo "System KasmVNC config not detected; leaving user config in place"
-        fi
-      ) &
-    fi
 
     # Now start the Coder agent (which will connect and then run startup_script)
     exec sh -c '${coder_agent.main[count.index].init_script}'
