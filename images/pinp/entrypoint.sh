@@ -22,6 +22,15 @@ mkdir -p "$HOME_DIR" "$CERT_DIR" "$HOME_DIR/.config/containers"
 TS_SOCKS=127.0.0.1:1055
 HOMELAB_BASE="https://homelab.tail4ef781.ts.net/stepca"
 
+# Default proxy settings for containers launched by nested Podman.
+# `host.containers.internal` resolves to the outer container namespace from inner containers.
+PODMAN_PROXY_HOST=${PODMAN_PROXY_HOST:-host.containers.internal}
+PODMAN_PROXY_PORT=${PODMAN_PROXY_PORT:-1055}
+PODMAN_HTTP_PROXY=${PODMAN_HTTP_PROXY:-http://${PODMAN_PROXY_HOST}:${PODMAN_PROXY_PORT}}
+PODMAN_HTTPS_PROXY=${PODMAN_HTTPS_PROXY:-${PODMAN_HTTP_PROXY}}
+PODMAN_ALL_PROXY=${PODMAN_ALL_PROXY:-socks5h://${PODMAN_PROXY_HOST}:${PODMAN_PROXY_PORT}}
+PODMAN_NO_PROXY=${PODMAN_NO_PROXY:-127.0.0.1,localhost,::1,host.containers.internal}
+
 # Wait for homelab to be reachable (via Tailscale SOCKS5) before fetching certs
 HOMELAB_HOST="https://homelab.tail4ef781.ts.net"
 echo "Waiting for $HOMELAB_HOST to return HTTP 200..."
@@ -70,7 +79,15 @@ env = [
   "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt",
   "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
   "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
-  "CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt"
+  "CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
+  "HTTP_PROXY=${PODMAN_HTTP_PROXY}",
+  "HTTPS_PROXY=${PODMAN_HTTPS_PROXY}",
+  "ALL_PROXY=${PODMAN_ALL_PROXY}",
+  "NO_PROXY=${PODMAN_NO_PROXY}",
+  "http_proxy=${PODMAN_HTTP_PROXY}",
+  "https_proxy=${PODMAN_HTTPS_PROXY}",
+  "all_proxy=${PODMAN_ALL_PROXY}",
+  "no_proxy=${PODMAN_NO_PROXY}"
 ]
 default_sysctls = []
 
@@ -79,7 +96,15 @@ env = [
   "NODE_EXTRA_CA_CERTS=${CERT_DIR}/ca-bundle.crt",
   "SSL_CERT_FILE=${CERT_DIR}/ca-bundle.crt",
   "REQUESTS_CA_BUNDLE=${CERT_DIR}/ca-bundle.crt",
-  "CURL_CA_BUNDLE=${CERT_DIR}/ca-bundle.crt"
+  "CURL_CA_BUNDLE=${CERT_DIR}/ca-bundle.crt",
+  "HTTP_PROXY=${PODMAN_HTTP_PROXY}",
+  "HTTPS_PROXY=${PODMAN_HTTPS_PROXY}",
+  "ALL_PROXY=${PODMAN_ALL_PROXY}",
+  "NO_PROXY=${PODMAN_NO_PROXY}",
+  "http_proxy=${PODMAN_HTTP_PROXY}",
+  "https_proxy=${PODMAN_HTTPS_PROXY}",
+  "all_proxy=${PODMAN_ALL_PROXY}",
+  "no_proxy=${PODMAN_NO_PROXY}"
 ]
 CONF
 
