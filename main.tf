@@ -500,7 +500,7 @@ resource "docker_container" "dns2socks" {
   network_mode = "container:${docker_container.tailscale[count.index].name}"
 
   # Wait for Tailscale and the podman volume initializer to be ready
-  depends_on = [docker_container.tailscale, docker_container.podman_socket_init]
+  depends_on = [docker_container.tailscale]
 
   restart = "unless-stopped"
 
