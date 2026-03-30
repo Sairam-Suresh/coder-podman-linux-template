@@ -465,7 +465,8 @@ resource "docker_image" "workspace_desktop" {
 
   # Only rebuild if files change
   triggers = {
-    dockerfile_hash  = filesha256("${path.module}/images/workspace-desktop/Dockerfile")
+    dockerfile_hash      = filesha256("${path.module}/images/workspace-desktop/Dockerfile")
+    workspace_image_id   = docker_image.workspace.image_id
   }
 }
 
