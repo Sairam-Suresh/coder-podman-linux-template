@@ -374,6 +374,33 @@ resource "docker_volume" "tailscale_state" {
   }
 }
 
+# Persistent volume for bind-mounting the rootless podman socket between the podman and workspace containers
+resource "docker_volume" "podman_socket" {
+  name = "coder-${data.coder_workspace.me.id}-podman-socket"
+  lifecycle {
+    ignore_changes = all
+  }
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+}
+
+# Pull Podman-in-Podman container if it does not exist
+data "docker_registry_image" "PinP" {
+  name = "quay.io/podman/stable:latest"
+}
+
+resource "docker_image" "PinP" {
+  name          = data.docker_registry_image.PinP.name
+  keep_locally = true  # Don't delete on workspace destruction
+  pull_triggers = [data.docker_registry_image.PinP.sha256_digest]
+}
+
 # Build the DNS2Socks image if it doesn't exist (persistent across workspace deletions)
 resource "docker_image" "dns2socks" {
   name = "dns2socks:local"
@@ -433,9 +460,6 @@ resource "docker_container" "tailscale" {
     volume_name    = docker_volume.tailscale_state.name
     read_only      = false
   }
-
-  # Userspace mode doesn't need TUN device or NET_ADMIN
-  # The official Tailscale container handles configuration via environment variables
 
   # Use Pasta networking backend
   network_mode = "pasta"
@@ -547,11 +571,7 @@ resource "docker_container" "workspace" {
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
     "HTTPS_PROXY=http://localhost:1055/",
-    # "https_proxy=socks5://localhost:1055/",
-    # "HTTP_PROXY=socks5://localhost:1055/",
-    # "http_proxy=socks5://localhost:1055/",
-    # "ALL_PROXY=socks5://localhost:1055/",
-    # "all_proxy=socks5://localhost:1055/",
+    "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock"
   ]
 
   # Share the network namespace with the Tailscale container
@@ -562,6 +582,12 @@ resource "docker_container" "workspace" {
   volumes {
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
+    read_only      = false
+  }
+
+  volumes {
+    container_path = "/run/user/1000/podman"
+    volume_name    = docker_volume.podman_socket.name
     read_only      = false
   }
 
@@ -585,5 +611,52 @@ resource "docker_container" "workspace" {
   labels {
     label = "coder.workspace_name"
     value = data.coder_workspace.me.name
+  }
+}
+
+# The optional PinP Podman Container which will enable Devcontainer support among others
+resource "docker_container" "PinP" {
+  count = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
+  image = docker_image.PinP.image_id
+  name  = "${local.resource_name}-podman"
+  
+  hostname = "${data.coder_workspace.me.name}-podman"
+
+  user = "1000:1000"
+  devices {
+    host_path      = "/dev/fuse"
+    container_path = "/dev/fuse"
+    permissions    = "rwm"
+  }
+
+  security_opts = ["label:disable"]
+
+  # Share the network namespace with the Tailscale container
+  network_mode = "container:${docker_container.tailscale[count.index].name}"
+
+  # Wait for Tailscale to be ready
+  depends_on = [docker_container.tailscale]
+
+  restart = "unless-stopped"
+
+  volumes {
+    container_path = "/home/coder"
+    volume_name    = docker_volume.home_volume.name
+    read_only      = false
+  }
+
+  volumes {
+    container_path = "/run/user/1000/podman"
+    volume_name    = docker_volume.podman_socket.name
+    read_only      = false
+  }
+  
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
   }
 }
