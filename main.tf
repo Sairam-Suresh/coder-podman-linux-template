@@ -558,7 +558,6 @@ resource "docker_container" "workspace" {
     done
     echo "homelab.tail4ef781.ts.net returned 200; continuing."
 
-
     sudo apt update
 
     echo "Downloading homelab certificates..."
@@ -614,6 +613,9 @@ desktop:
     drinode: /dev/dri/renderD128
 YAML
     fi
+
+    export PATH="$HOME/.local/bin:$PATH"
+
     # Now start the Coder agent (which will connect and then run startup_script)
     exec bash -c '${coder_agent.main[count.index].init_script}'
   EOT
