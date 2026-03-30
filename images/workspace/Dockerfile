@@ -59,12 +59,12 @@ RUN useradd coder \
 USER coder
 
 RUN export NPM_CONFIG_PREFIX="$HOME/.local" && \
-    mkdir -p "$NPM_CONFIG_PREFIX" && \
-    npm config set prefix $NPM_CONFIG_PREFIX && \
-    if ! grep -q "NPM_CONFIG_PREFIX" ~/.bashrc; then \
-      echo 'export NPM_CONFIG_PREFIX="$HOME/.local"' >> ~/.bashrc \
-      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc \
-    fi \
-    export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+        mkdir -p "$NPM_CONFIG_PREFIX" && \
+        npm config set prefix "$NPM_CONFIG_PREFIX" && \
+        if ! grep -q "NPM_CONFIG_PREFIX" ~/.bashrc; then \
+            echo 'export NPM_CONFIG_PREFIX="$HOME/.local"' >> ~/.bashrc && \
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc; \
+        fi && \
+        export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
 
 RUN pipx ensurepath
