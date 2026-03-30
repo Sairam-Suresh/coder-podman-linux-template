@@ -183,14 +183,6 @@ resource "coder_agent" "main" {
   }
 
   metadata {
-    display_name = "Home Disk"
-    key          = "3_home_disk"
-    script       = "coder stat disk --path $${HOME}"
-    interval     = 60
-    timeout      = 1
-  }
-
-  metadata {
     display_name = "CPU Usage (Host)"
     key          = "4_cpu_usage_host"
     script       = "coder stat cpu --host"
@@ -203,6 +195,14 @@ resource "coder_agent" "main" {
     key          = "5_mem_usage_host"
     script       = "coder stat mem --host"
     interval     = 10
+    timeout      = 1
+  }
+
+  metadata {
+    display_name = "Home Disk (Host)"
+    key          = "3_home_disk"
+    script       = "coder stat disk --path $${HOME}"
+    interval     = 60
     timeout      = 1
   }
 
@@ -603,11 +603,13 @@ resource "docker_container" "workspace" {
     
     echo "Certificates configured at $CERT_DIR/ca-bundle.crt"
 
-    # If desktop environment is enabled, configure KasmVNC to use hardware acceleration
+    # If desktop environment is enabled, ensure KasmVNC has GPU settings.
+    # Create a user config fallback and run a background patcher that will
+    # merge the GPU settings into /etc/kasmvnc/kasmvnc.yaml if the module writes it.
     if [ "$${INSTALL_DE}" = "true" ]; then
-      echo "Configuring KasmVNC settings at /etc/kasmvnc/kasmvnc.yaml"
-      sudo mkdir -p /etc/kasmvnc
-      cat <<'YAML' | sudo tee /etc/kasmvnc/kasmvnc.yaml >/dev/null
+      echo "Preparing KasmVNC user config at $HOME/.vnc/kasmvnc.yaml"
+      mkdir -p "$HOME/.vnc"
+      cat > "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
 network:
   protocol: http
   interface: 127.0.0.1
@@ -619,12 +621,50 @@ network:
   udp:
     public_ip: 127.0.0.1
 
-# Enable hardware acceleration for KasmVNC
 desktop:
   gpu:
     hw3d: true
     drinode: /dev/dri/renderD128
 YAML
+
+      # Background task: wait for system config and append GPU settings if needed.
+      (
+        for i in $(seq 1 60); do
+          if [ -f /etc/kasmvnc/kasmvnc.yaml ]; then
+            break
+          fi
+          sleep 1
+        done
+
+        if [ -f /etc/kasmvnc/kasmvnc.yaml ]; then
+          echo "System KasmVNC config found at /etc/kasmvnc/kasmvnc.yaml; attempting merge"
+          if sudo -n true 2>/dev/null; then
+            if ! sudo grep -qE '^[[:space:]]*desktop:' /etc/kasmvnc/kasmvnc.yaml >/dev/null 2>&1; then
+              echo "Appending GPU settings to /etc/kasmvnc/kasmvnc.yaml"
+              sudo tee -a /etc/kasmvnc/kasmvnc.yaml >/dev/null <<'YAML'
+desktop:
+  gpu:
+    hw3d: true
+    drinode: /dev/dri/renderD128
+YAML
+            else
+              echo "System KasmVNC config already contains desktop/gpu settings; skipping"
+            fi
+          else
+            echo "No passwordless sudo; ensuring user config contains GPU settings"
+            if ! grep -qE '^[[:space:]]*desktop:' "$HOME/.vnc/kasmvnc.yaml" >/dev/null 2>&1; then
+              cat >> "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
+desktop:
+  gpu:
+    hw3d: true
+    drinode: /dev/dri/renderD128
+YAML
+            fi
+          fi
+        else
+          echo "System KasmVNC config not detected; leaving user config in place"
+        fi
+      ) &
     fi
 
     # Now start the Coder agent (which will connect and then run startup_script)
