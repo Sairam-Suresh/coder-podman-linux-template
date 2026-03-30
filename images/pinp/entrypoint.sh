@@ -23,13 +23,12 @@ TS_SOCKS=127.0.0.1:1055
 HOMELAB_BASE="https://homelab.tail4ef781.ts.net/stepca"
 
 # Default proxy settings for containers launched by nested Podman.
-# `host.containers.internal` resolves to the outer container namespace from inner containers.
-PODMAN_PROXY_HOST=${PODMAN_PROXY_HOST:-host.containers.internal}
+PODMAN_PROXY_HOST=${PODMAN_PROXY_HOST:-localhost}
 PODMAN_PROXY_PORT=${PODMAN_PROXY_PORT:-1055}
 PODMAN_HTTP_PROXY=${PODMAN_HTTP_PROXY:-http://${PODMAN_PROXY_HOST}:${PODMAN_PROXY_PORT}}
 PODMAN_HTTPS_PROXY=${PODMAN_HTTPS_PROXY:-${PODMAN_HTTP_PROXY}}
 PODMAN_ALL_PROXY=${PODMAN_ALL_PROXY:-socks5h://${PODMAN_PROXY_HOST}:${PODMAN_PROXY_PORT}}
-PODMAN_NO_PROXY=${PODMAN_NO_PROXY:-127.0.0.1,localhost,::1,host.containers.internal}
+PODMAN_NO_PROXY=${PODMAN_NO_PROXY:-127.0.0.1,localhost,::1}
 
 # Wait for homelab to be reachable (via Tailscale SOCKS5) before fetching certs
 HOMELAB_HOST="https://homelab.tail4ef781.ts.net"
