@@ -545,7 +545,7 @@ resource "docker_container" "workspace" {
   hostname = "${data.coder_workspace.me.name}"
   
   # Custom entrypoint that waits for Tailscale and trusts certificates BEFORE starting the agent
-  entrypoint = ["sh", "-c"]
+  entrypoint = ["bash", "-c"]
   command = [<<-EOT
     set -e
 
@@ -615,7 +615,7 @@ desktop:
 YAML
     fi
     # Now start the Coder agent (which will connect and then run startup_script)
-    exec sh -c '${coder_agent.main[count.index].init_script}'
+    exec bash -c '${coder_agent.main[count.index].init_script}'
   EOT
   ]
   
