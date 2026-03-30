@@ -604,7 +604,7 @@ resource "docker_container" "workspace" {
     echo "Certificates configured at $CERT_DIR/ca-bundle.crt"
 
     # If desktop environment is enabled, configure KasmVNC to use hardware acceleration
-    if [ "${INSTALL_DE}" = "true" ]; then
+    if [ "$${INSTALL_DE}" = "true" ]; then
       echo "Configuring KasmVNC settings at $HOME/.vnc/kasmvnc.yaml"
       mkdir -p "$HOME/.vnc"
       cat > "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
