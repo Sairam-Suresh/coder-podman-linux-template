@@ -697,7 +697,10 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
-  security_opts = ["label:disable"]
+  security_opts = [
+    "label:disable",
+    "seccomp=unconfined",
+  ]
 
   # Allow PinP to perform operations that require additional privileges (e.g. mounting)
   capabilities {

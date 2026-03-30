@@ -8,6 +8,13 @@ USERNAME=${USERNAME:-$(basename "$HOME_DIR")}
 # Use cert dir under the podman user's home to avoid permission issues
 CERT_DIR="$HOME_DIR/container-certs"
 
+# Default rootless network backend for podman (override with PODMAN_NETWORK_MODE)
+NET_MODE=${PODMAN_NETWORK_MODE:-${NETWORK_MODE:-pasta}}
+if [ "$NET_MODE" != "pasta" ] && [ "$NET_MODE" != "slirp4netns" ]; then
+  echo "Unsupported PODMAN_NETWORK_MODE '$NET_MODE'; falling back to pasta"
+  NET_MODE="pasta"
+fi
+
 # Ensure home, cert and config directories exist
 mkdir -p "$HOME_DIR" "$CERT_DIR" "$HOME_DIR/.config/containers"
 
@@ -47,6 +54,9 @@ fi
 cat > "$HOME_DIR/.config/containers/containers.conf" <<CONF
 [engine]
 compose_warning_logs = false
+
+[network]
+default_rootless_network_cmd = "${NET_MODE}"
 
 [containers]
 userns = "keep-id"
