@@ -24,8 +24,7 @@ RUN apt-get update && \
     rsync \
     iproute2 \
     podman-remote \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+    git
 
 RUN if command -v podman-remote >/dev/null 2>&1; then \
         if ! command -v podman >/dev/null 2>&1; then ln -s "$(command -v podman-remote)" /usr/local/bin/podman; fi; \
@@ -45,6 +44,10 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+      sudo apt-get install -y nodejs && \
+      rm -rf /var/lib/apt/lists/*
+
 # Add coder user
 RUN useradd coder \
     --create-home \
@@ -54,5 +57,14 @@ RUN useradd coder \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
 USER coder
+
+RUN export NPM_CONFIG_PREFIX="$HOME/.local" && \
+    mkdir -p "$NPM_CONFIG_PREFIX" && \
+    npm config set prefix $NPM_CONFIG_PREFIX && \
+    if ! grep -q "NPM_CONFIG_PREFIX" ~/.bashrc; then \
+      echo 'export NPM_CONFIG_PREFIX="$HOME/.local"' >> ~/.bashrc \
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc \
+    fi \
+    export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
 
 RUN pipx ensurepath

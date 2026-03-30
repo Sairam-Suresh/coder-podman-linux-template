@@ -304,26 +304,6 @@ module "copilot" {
   ai_prompt = data.coder_task.me.prompt
 
   pre_install_script = <<-EOT
-    #!/bin/bash
-    set -e
-
-    if ! command -v node &> /dev/null; then
-      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-      sudo apt-get update
-      sudo apt-get install -y nodejs
-    fi
-
-    export NPM_CONFIG_PREFIX="$HOME/.local"
-    mkdir -p "$NPM_CONFIG_PREFIX"
-    
-    npm config set prefix $NPM_CONFIG_PREFIX
-
-    if ! grep -q "NPM_CONFIG_PREFIX" ~/.bashrc; then
-      echo 'export NPM_CONFIG_PREFIX="$HOME/.local"' >> ~/.bashrc
-      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-    fi
-
-    export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
   EOT
 }
 
