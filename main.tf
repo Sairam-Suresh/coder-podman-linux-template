@@ -345,6 +345,14 @@ module "kasmvnc" {
   subdomain           = true
 }
 
+module "devcontainers-cli" {
+  source             = "registry.coder.com/coder/devcontainers-cli/coder"
+  version            = "1.1.0"
+  count              = data.coder_workspace.me.start_count
+  agent_id           = coder_agent.main[count.index].id
+  start_blocks_login = false
+}
+
 resource "docker_volume" "home_volume" {
   name = "coder-${data.coder_workspace.me.id}-home"
   # Protect the volume from being deleted due to changes in attributes.
@@ -735,13 +743,6 @@ resource "docker_container" "PinP" {
     label = "coder.workspace_id"
     value = data.coder_workspace.me.id
   }
-}
-
-module "devcontainers-cli" {
-  source             = "registry.coder.com/coder/devcontainers-cli/coder"
-  version            = "1.1.0"
-  agent_id           = coder_agent.main[count.index].id
-  start_blocks_login = false
 }
 
 resource "coder_devcontainer" "devcontainer" {
