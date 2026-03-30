@@ -527,8 +527,15 @@ resource "docker_container" "workspace" {
   command = [<<-EOT
     set -e
 
-    # Download and trust self-signed certificates from homelab (rootless-friendly)
-    # Uses the Tailscale SOCKS5 proxy for connectivity
+    # Wait until the workspace can reach the coder health endpoint via the
+    # Tailscale SOCKS5 proxy. Continue only after it returns a plain "OK".
+    echo "Waiting for https://coder.home.net/healthz to return OK..."
+    until curl --socks5-hostname 127.0.0.1:1055 -fsSL --max-time 5 https://coder.home.net/healthz 2>/dev/null | grep -q '^OK$'; do
+      echo "Waiting for coder.home.net/healthz..."
+      sleep 1
+    done
+    echo "coder.home.net/healthz returned OK; continuing."
+
 
     sudo apt update
 
