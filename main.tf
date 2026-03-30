@@ -630,7 +630,7 @@ resource "docker_container" "PinP" {
 
   security_opts = ["label:disable"]
   entrypoint = ["sh", "-c"]
-  command = ["mkdir -p /run/user/1000/podman && chown -R 1000:1000 /run/user/1000/podman || true; if command -v su >/dev/null 2>&1; then su -s /bin/sh -c 'echo Dropped privileges to UID 1000 using su >&2; exec podman system service --time 0 unix:///run/user/1000/podman/podman.sock' 1000; elif command -v runuser >/dev/null 2>&1; then runuser -u 1000 -- sh -c 'echo Dropped privileges to UID 1000 using runuser >&2; exec podman system service --time 0 unix:///run/user/1000/podman/podman.sock'; else echo Could not drop privileges; starting podman as current user >&2; exec podman system service --time 0 unix:///run/user/1000/podman/podman.sock; fi"]
+  command = ["podman system service --time 0 unix:///tmp/podman/podman.sock"]
 
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"
@@ -647,7 +647,7 @@ resource "docker_container" "PinP" {
   }
 
   volumes {
-    container_path = "/run/user/1000/podman"
+    container_path = "/tmp/podman/"
     volume_name    = docker_volume.podman_socket.name
     read_only      = false
   }
