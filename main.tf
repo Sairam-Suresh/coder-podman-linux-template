@@ -392,15 +392,21 @@ resource "docker_volume" "podman_socket" {
   }
 }
 
-# Pull Podman-in-Podman container if it does not exist
-data "docker_registry_image" "PinP" {
-  name = "quay.io/podman/stable:latest"
-}
-
+# Build local Podman-in-Podman image (allows custom entrypoint)
 resource "docker_image" "PinP" {
-  name          = data.docker_registry_image.PinP.name
-  keep_locally = true  # Don't delete on workspace destruction
-  pull_triggers = [data.docker_registry_image.PinP.sha256_digest]
+  name = "pinp:local"
+  keep_locally = true
+
+  build {
+    context    = "${path.module}/images/pinp"
+    dockerfile = "Dockerfile"
+    tag        = ["pinp:local"]
+  }
+
+  triggers = {
+    dockerfile_hash  = filesha256("${path.module}/images/pinp/Dockerfile")
+    entrypoint_hash  = filesha256("${path.module}/images/pinp/entrypoint.sh")
+  }
 }
 
 # Build the DNS2Socks image if it doesn't exist (persistent across workspace deletions)
@@ -691,11 +697,7 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
-  user = "1000:1000"
-
   security_opts = ["label:disable"]
-  entrypoint = ["sh", "-c"]
-  command = ["podman system service --time 0 unix:///tmp/podman/podman.sock"]
 
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"
