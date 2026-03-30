@@ -739,6 +739,6 @@ resource "docker_container" "PinP" {
 
 resource "coder_devcontainer" "devcontainer" {
   count = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
-  agent_id = coder_agent.main.id
+  agent_id = coder_agent.main[count.index].id
   workspace_folder = local.workdir
 }
