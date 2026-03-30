@@ -63,7 +63,8 @@ userns = "keep-id"
 volumes = [
   "${CERT_DIR}/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro",
   "${CERT_DIR}/ca-bundle.crt:/etc/pki/tls/certs/ca-bundle.crt:ro",
-  "${CERT_DIR}/ca-bundle.crt:/etc/ssl/cert.pem:ro"
+  "${CERT_DIR}/ca-bundle.crt:/etc/ssl/cert.pem:ro",
+  "/proc:/proc",
 ]
 env = [
   "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt",
@@ -71,6 +72,7 @@ env = [
   "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
   "CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt"
 ]
+default_sysctls = []
 
 [build]
 env = [
