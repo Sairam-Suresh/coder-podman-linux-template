@@ -605,9 +605,9 @@ resource "docker_container" "workspace" {
 
     # If desktop environment is enabled, configure KasmVNC to use hardware acceleration
     if [ "$${INSTALL_DE}" = "true" ]; then
-      echo "Configuring KasmVNC settings at $HOME/.vnc/kasmvnc.yaml"
-      mkdir -p "$HOME/.vnc"
-      cat > "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
+      echo "Configuring KasmVNC settings at /etc/kasmvnc/kasmvnc.yaml"
+      sudo mkdir -p /etc/kasmvnc
+      cat <<'YAML' | sudo tee /etc/kasmvnc/kasmvnc.yaml >/dev/null
 network:
   protocol: http
   interface: 127.0.0.1
