@@ -17,6 +17,7 @@ RUN apt-get update && \
     python3 \
     python3-pip \
     sudo \
+    procps \
     unzip \
     vim \
     wget \

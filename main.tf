@@ -630,6 +630,7 @@ resource "docker_container" "PinP" {
   }
 
   security_opts = ["label:disable"]
+  command = ["tail", "-f", "/dev/null"]
 
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"
