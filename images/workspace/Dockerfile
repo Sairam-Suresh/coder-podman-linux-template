@@ -16,6 +16,7 @@ RUN apt-get update && \
     pipx \
     python3 \
     python3-pip \
+    podman-compose \
     sudo \
     procps \
     unzip \
@@ -26,10 +27,8 @@ RUN apt-get update && \
     podman-remote \
     git
 
-RUN if command -v podman-remote >/dev/null 2>&1; then \
-        if ! command -v podman >/dev/null 2>&1; then ln -s "$(command -v podman-remote)" /usr/local/bin/podman; fi; \
-        if ! command -v docker >/dev/null 2>&1; then ln -s "$(command -v podman-remote)" /usr/local/bin/docker; fi; \
-    fi
+RUN ln -s "$(command -v podman-remote)" /usr/local/bin/podman && \
+    ln -s "$(command -v podman-remote)" /usr/local/bin/docker
 
 # Generate the desired locale (en_US.UTF-8)
 # Ensure en_US.UTF-8 is enabled and generated to avoid setlocale warnings
