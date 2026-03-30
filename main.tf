@@ -499,8 +499,8 @@ resource "docker_container" "dns2socks" {
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"
 
-  # Wait for Tailscale to be ready
-  depends_on = [docker_container.tailscale]
+  # Wait for Tailscale and the podman volume initializer to be ready
+  depends_on = [docker_container.tailscale, docker_container.podman_socket_init]
 
   restart = "unless-stopped"
 
@@ -622,8 +622,6 @@ resource "docker_container" "PinP" {
   name  = "${local.resource_name}-podman"
   
   hostname = "${data.coder_workspace.me.name}-podman"
-
-  user = "1000:1000"
   devices {
     host_path      = "/dev/fuse"
     container_path = "/dev/fuse"
@@ -631,8 +629,8 @@ resource "docker_container" "PinP" {
   }
 
   security_opts = ["label:disable"]
-  command = ["podman", "system", "service", "--time", "0", "unix:///run/user/1000/podman/podman.sock"]
   entrypoint = ["sh", "-c"]
+  command = ["mkdir -p /run/user/1000/podman && chown -R 1000:1000 /run/user/1000/podman || true; if command -v su >/dev/null 2>&1; then su -s /bin/sh -c 'echo Dropped privileges to UID 1000 using su >&2; exec podman system service --time 0 unix:///run/user/1000/podman/podman.sock' 1000; elif command -v runuser >/dev/null 2>&1; then runuser -u 1000 -- sh -c 'echo Dropped privileges to UID 1000 using runuser >&2; exec podman system service --time 0 unix:///run/user/1000/podman/podman.sock'; else echo Could not drop privileges; starting podman as current user >&2; exec podman system service --time 0 unix:///run/user/1000/podman/podman.sock; fi"]
 
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"
