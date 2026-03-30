@@ -571,7 +571,8 @@ resource "docker_container" "workspace" {
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
     "HTTPS_PROXY=http://localhost:1055/",
-    "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock"
+    "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock",
+    "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock"
   ]
 
   # Share the network namespace with the Tailscale container
@@ -630,7 +631,7 @@ resource "docker_container" "PinP" {
   }
 
   security_opts = ["label:disable"]
-  command = ["tail", "-f", "/dev/null"]
+  command = ["podman", "system", "service", "--time", "0", "unix:///run/user/1000/podman/podman.sock"]
 
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"

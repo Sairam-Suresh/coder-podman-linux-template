@@ -27,6 +27,10 @@ RUN apt-get update && \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+RUN if ! command -v podman >/dev/null 2>&1 && command -v podman-remote >/dev/null 2>&1; then \
+            ln -s "$(command -v podman-remote)" /usr/local/bin/podman; \
+        fi
+
 # Generate the desired locale (en_US.UTF-8)
 # Ensure en_US.UTF-8 is enabled and generated to avoid setlocale warnings
 RUN if [ -f /etc/locale.gen ]; then \
