@@ -184,7 +184,7 @@ resource "coder_agent" "main" {
 
   metadata {
     display_name = "CPU Usage (Host)"
-    key          = "4_cpu_usage_host"
+    key          = "2_cpu_usage_host"
     script       = "coder stat cpu --host"
     interval     = 10
     timeout      = 1
@@ -192,7 +192,7 @@ resource "coder_agent" "main" {
 
   metadata {
     display_name = "Memory Usage (Host)"
-    key          = "5_mem_usage_host"
+    key          = "3_mem_usage_host"
     script       = "coder stat mem --host"
     interval     = 10
     timeout      = 1
@@ -200,7 +200,7 @@ resource "coder_agent" "main" {
 
   metadata {
     display_name = "Home Disk (Host)"
-    key          = "3_home_disk"
+    key          = "4_home_disk"
     script       = "coder stat disk --path $${HOME}"
     interval     = 60
     timeout      = 1
@@ -208,7 +208,7 @@ resource "coder_agent" "main" {
 
   metadata {
     display_name = "Load Average (Host)"
-    key          = "6_load_host"
+    key          = "5_load_host"
     # get load avg scaled by number of cores
     script   = <<EOT
       echo "`cat /proc/loadavg | awk '{ print $1 }'` `nproc`" | awk '{ printf "%0.2f", $1/$2 }'
@@ -735,4 +735,10 @@ resource "docker_container" "PinP" {
     label = "coder.workspace_id"
     value = data.coder_workspace.me.id
   }
+}
+
+resource "coder_devcontainer" "devcontainer" {
+  count = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
+  agent_id = coder_agent.main.id
+  workspace_folder = local.workdir
 }
