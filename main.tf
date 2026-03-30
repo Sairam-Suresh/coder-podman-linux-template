@@ -628,6 +628,8 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
+  user = "1000:1000"
+
   security_opts = ["label:disable"]
   entrypoint = ["sh", "-c"]
   command = ["podman system service --time 0 unix:///tmp/podman/podman.sock"]
