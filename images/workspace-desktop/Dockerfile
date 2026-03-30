@@ -12,6 +12,13 @@ RUN set -eux; \
     rm -f /root/kasmvncserver_bookworm_1.3.2_amd64.deb /tmp/google-chrome-stable_current_amd64.deb; \
     rm -rf /var/lib/apt/lists/*
 
+# Wrapper to ensure Chrome runs well inside containers (disable /dev/shm usage etc.)
+RUN cat > /usr/local/bin/google-chrome <<'EOF' && \
+    chmod +x /usr/local/bin/google-chrome
+#!/bin/sh
+exec /usr/bin/google-chrome "$@" --disable-dev-shm-usage --no-sandbox
+EOF
+
 # Setting the required environment variables
 ARG USER=coder
 RUN echo 'LANG=en_US.UTF-8' >> /etc/default/locale; \

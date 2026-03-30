@@ -20,6 +20,9 @@ locals {
   folder_name = data.coder_parameter.enable_git_clone.value == "true" ? replace(basename(try(data.coder_parameter.repo_url[0].value, "")), "/\\.git$/", "") : try(data.coder_parameter.manual_folder_name[0].value, "")
   workdir     = "/home/coder/${local.folder_name}"
   
+  # Whether GPU device mounts should be enabled (true when install_de is selected)
+  enable_gpu = data.coder_parameter.install_de.value == "true" ? true : (data.coder_parameter.enable_gpu.value == "true")
+
   # Select container image based on desktop environment parameter
   container_image = data.coder_parameter.install_de.value == "true" ? docker_image.workspace_desktop[0].image_id : docker_image.workspace.image_id
 }
@@ -61,6 +64,16 @@ data "coder_parameter" "enable_devcontainer" {
   description  = "Installs Rootless Podman to support Devcontainers."
   default      = "false"
   mutable      = true
+}
+
+data "coder_parameter" "enable_gpu" {
+  type         = "bool"
+  name         = "enable_gpu"
+  display_name = "Enable GPU Acceleration"
+  description  = "Mount host GPU devices /dev/dri/card0 and /dev/dri/renderD128 into the workspace container for hardware acceleration."
+  # Force-enable and make read-only when Desktop Environment is selected
+  default      = data.coder_parameter.install_de.value == "true" ? "true" : "false"
+  mutable      = data.coder_parameter.install_de.value == "true" ? false : true
 }
 
 data "coder_parameter" "repo_url" {
@@ -590,6 +603,30 @@ resource "docker_container" "workspace" {
     
     echo "Certificates configured at $CERT_DIR/ca-bundle.crt"
 
+    # If desktop environment is enabled, configure KasmVNC to use hardware acceleration
+    if [ "${INSTALL_DE}" = "true" ]; then
+      echo "Configuring KasmVNC settings at $HOME/.vnc/kasmvnc.yaml"
+      mkdir -p "$HOME/.vnc"
+      cat > "$HOME/.vnc/kasmvnc.yaml" <<'YAML'
+network:
+  protocol: http
+  interface: 127.0.0.1
+  websocket_port: 6800
+  ssl:
+    require_ssl: false
+    pem_certificate:
+    pem_key:
+  udp:
+    public_ip: 127.0.0.1
+
+# Enable hardware acceleration for KasmVNC
+desktop:
+  gpu:
+    hw3d: true
+    drinode: /dev/dri/renderD128
+YAML
+    fi
+
     # Now start the Coder agent (which will connect and then run startup_script)
     exec sh -c '${coder_agent.main[count.index].init_script}'
   EOT
@@ -599,7 +636,8 @@ resource "docker_container" "workspace" {
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
     "HTTPS_PROXY=http://localhost:1055/",
     "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock",
-    "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock"
+    "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock",
+    "INSTALL_DE=${data.coder_parameter.install_de.value}"
   ]
 
   # Share the network namespace with the Tailscale container
@@ -617,6 +655,15 @@ resource "docker_container" "workspace" {
     container_path = "/run/user/1000/podman"
     volume_name    = docker_volume.podman_socket.name
     read_only      = false
+  }
+
+  dynamic "devices" {
+    for_each = local.enable_gpu ? ["/dev/dri/card0", "/dev/dri/renderD128"] : []
+    content {
+      host_path      = devices.value
+      container_path = devices.value
+      permissions    = "rwm"
+    }
   }
 
   depends_on = [docker_container.dns2socks]
