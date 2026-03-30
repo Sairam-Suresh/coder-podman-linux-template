@@ -737,6 +737,13 @@ resource "docker_container" "PinP" {
   }
 }
 
+module "devcontainers-cli" {
+  source             = "registry.coder.com/coder/devcontainers-cli/coder"
+  version            = "1.1.0"
+  agent_id           = coder_agent.main[count.index].id
+  start_blocks_login = false
+}
+
 resource "coder_devcontainer" "devcontainer" {
   count = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
   agent_id = coder_agent.main[count.index].id
