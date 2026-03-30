@@ -699,13 +699,13 @@ resource "docker_container" "PinP" {
 
   security_opts = [
     "label:disable",
-    "seccomp=unconfined",
+    # "seccomp=unconfined",
   ]
 
   # Allow PinP to perform operations that require additional privileges (e.g. mounting)
-  capabilities {
-    add = ["SYS_ADMIN"]
-  }
+  # capabilities {
+  #   add = ["SYS_ADMIN"]
+  # }
 
   # Share the network namespace with the Tailscale container
   network_mode = "container:${docker_container.tailscale[count.index].name}"
