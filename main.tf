@@ -145,6 +145,7 @@ resource "coder_agent" "main" {
     SSL_CERT_FILE       = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     REQUESTS_CA_BUNDLE  = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     CURL_CA_BUNDLE      = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
+    DISPLAY             = ":1"
   }
 
   # The following metadata blocks are optional. They are used to display
@@ -545,14 +546,14 @@ resource "docker_container" "workspace" {
   command = [<<-EOT
     set -e
 
-    # Wait until the workspace can reach the coder health endpoint via the
-    # Tailscale SOCKS5 proxy. Continue only after it returns a plain "OK".
-    echo "Waiting for https://coder.home.net/healthz to return OK..."
-    until curl --socks5-hostname 127.0.0.1:1055 -fsSL --max-time 5 https://coder.home.net/healthz 2>/dev/null | grep -q '^OK$'; do
-      echo "Waiting for coder.home.net/healthz..."
+    # Wait until the homelab endpoint responds with HTTP 200 via the
+    # Tailscale SOCKS5 proxy. Continue only after it returns 200.
+    echo "Waiting for https://homelab.tail4ef781.ts.net/ to return HTTP 200..."
+    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 https://homelab.tail4ef781.ts.net/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+      echo "Waiting for homelab.tail4ef781.ts.net to return 200..."
       sleep 1
     done
-    echo "coder.home.net/healthz returned OK; continuing."
+    echo "homelab.tail4ef781.ts.net returned 200; continuing."
 
 
     sudo apt update
