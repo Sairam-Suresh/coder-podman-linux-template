@@ -21,7 +21,7 @@ locals {
   workdir     = "/home/coder/${local.folder_name}"
   
   # Select container image based on desktop environment parameter
-  container_image = data.coder_parameter.install_de.value == "true" ? "codercom/enterprise-desktop:ubuntu" : docker_image.base_workspace.image_id
+  container_image = data.coder_parameter.install_de.value == "true" ? docker_image.workspace_desktop.image_id : docker_image.workspace.image_id
 }
 
 variable "docker_socket" {
@@ -420,19 +420,37 @@ resource "docker_image" "dns2socks" {
 }
 
 # Build the workspace (no desktop) image if it doesn't exist (persistent across workspace deletions)
-resource "docker_image" "base_workspace" {
-  name = "base_workspace:local"
+resource "docker_image" "workspace" {
+  name = "workspace:local"
   keep_locally = true  # Don't delete on workspace destruction
   
   build {
     context    = "${path.module}/images/workspace"
     dockerfile = "Dockerfile"
-    tag        = ["base_workspace:local"]
+    tag        = ["workspace:local"]
   }
 
   # Only rebuild if files change
   triggers = {
     dockerfile_hash  = filesha256("${path.module}/images/workspace/Dockerfile")
+  }
+}
+
+# Desktop variant built on top of the `workspace` image. Built after `workspace` is available.
+resource "docker_image" "workspace_desktop" {
+  name = "workspace_desktop:local"
+  keep_locally = true
+  depends_on = [docker_image.workspace]
+
+  build {
+    context    = "${path.module}/images/workspace-desktop"
+    dockerfile = "Dockerfile"
+    tag        = ["workspace_desktop:local"]
+  }
+
+  # Only rebuild if files change
+  triggers = {
+    dockerfile_hash  = filesha256("${path.module}/images/workspace-desktop/Dockerfile")
   }
 }
 
