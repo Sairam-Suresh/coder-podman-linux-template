@@ -21,7 +21,7 @@ locals {
   workdir     = "/home/coder/${local.folder_name}"
   
   # Select container image based on desktop environment parameter
-  container_image = data.coder_parameter.install_de.value == "true" ? docker_image.workspace_desktop.image_id : docker_image.workspace.image_id
+  container_image = data.coder_parameter.install_de.value == "true" ? docker_image.workspace_desktop[0].image_id : docker_image.workspace.image_id
 }
 
 variable "docker_socket" {
@@ -439,6 +439,7 @@ resource "docker_image" "workspace" {
 
 # Desktop variant built on top of the `workspace` image. Built after `workspace` is available.
 resource "docker_image" "workspace_desktop" {
+  count = data.coder_parameter.install_de.value == "true" ? 1 : 0
   name = "workspace_desktop:local"
   keep_locally = true
   depends_on = [docker_image.workspace]
