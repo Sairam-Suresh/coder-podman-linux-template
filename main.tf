@@ -599,7 +599,34 @@ resource "docker_container" "workspace" {
     
     # Create a combined certificate bundle for applications that need a single file
     cat "$CERT_DIR/homelab-root.crt" "$CERT_DIR/homelab-intermed.crt" > "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
-    
+
+    # Also include the system trust store so system CA roots remain trusted.
+    appended=0
+    system_bundles=( \
+      "/etc/ssl/certs/ca-certificates.crt" \
+      "/etc/pki/tls/certs/ca-bundle.crt" \
+      "/etc/ssl/cert.pem" \
+      "/etc/ssl/certs/ca-bundle.crt" \
+      "/etc/ssl/ca-bundle.pem" \
+      "/etc/ssl/ca-bundle.crt" \
+      "/usr/local/share/ca-certificates/ca-certificates.crt" \
+    )
+    for f in "$${system_bundles[@]}"; do
+      if [ -f "$f" ]; then
+        echo "Appending system trust store $f to $CERT_DIR/ca-bundle.crt"
+        cat "$f" >> "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
+        appended=1
+      fi
+    done
+
+    # If we didn't find a packaged bundle, append individual cert files from /etc/ssl/certs
+    if [ "$appended" -eq 0 ] && [ -d /etc/ssl/certs ]; then
+      echo "Appending certificates from /etc/ssl/certs to $CERT_DIR/ca-bundle.crt"
+      find /etc/ssl/certs -type f \( -name "*.crt" -o -name "*.pem" \) -print0 | while IFS= read -r -d '' certfile; do
+        cat "$certfile" >> "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
+      done
+    fi
+
     # Export certificate paths for all processes
     export SSL_CERT_FILE="$CERT_DIR/ca-bundle.crt"
     export REQUESTS_CA_BUNDLE="$CERT_DIR/ca-bundle.crt"
