@@ -557,12 +557,12 @@ resource "docker_container" "workspace" {
 
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
-    echo "Waiting for https://homelab.tail4ef781.ts.net/ to return HTTP 200..."
-    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' https://homelab.tail4ef781.ts.net/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
-      echo "Waiting for homelab.tail4ef781.ts.net to return 200..."
+    echo "Waiting for http://stepca.service.internal/ to return HTTP 200..."
+    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://stepca.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+      echo "Waiting for http://stepca.service.internal/ to return 200..."
       sleep 1
     done
-    echo "homelab.tail4ef781.ts.net returned 200; continuing."
+    echo "http://stepca.service.internal/ returned 200; continuing."
 
     sudo apt update
 
@@ -573,14 +573,14 @@ resource "docker_container" "workspace" {
     mkdir -p "$CERT_DIR"
     
     # Download root certificate (using SOCKS5 proxy via curl)
-    if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/homelab-root.crt" https://homelab.tail4ef781.ts.net/stepca/roots.pem; then
+    if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
       echo "Successfully downloaded root certificate"
     else
       echo "Warning: Failed to download root certificate"
     fi
     
     # Download intermediate certificate
-    if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/homelab-intermed.crt" https://homelab.tail4ef781.ts.net/stepca/intermediates.pem; then
+    if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
       echo "Successfully downloaded intermediate certificate"
     else
       echo "Warning: Failed to download intermediate certificate"
