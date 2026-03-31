@@ -557,12 +557,12 @@ resource "docker_container" "workspace" {
 
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
-    echo "Waiting for http://stepca.service.internal/ to return HTTP 200..."
-    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://stepca.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
-      echo "Waiting for http://stepca.service.internal/ to return 200..."
+    echo "Waiting for http://healthcheck.service.internal/ to return HTTP 200..."
+    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+      echo "Waiting for http://healthcheck.service.internal/ to return 200..."
       sleep 1
     done
-    echo "http://stepca.service.internal/ returned 200; continuing."
+    echo "http://healthcheck.service.internal/ returned 200; continuing."
 
     sudo apt update
 
