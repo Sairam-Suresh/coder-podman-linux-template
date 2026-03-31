@@ -494,6 +494,16 @@ resource "docker_container" "tailscale" {
 
   # Configure DNS to use only localhost (DNS2Socks will be listening on port 53)
   dns = ["127.0.0.1"]
+  
+  healthcheck {
+    test         = ["CMD-SHELL", "tailscale status --json | grep BackendState | grep -q Running"]
+    interval     = "10s"
+    timeout      = "5s"
+    retries      = 3
+    start_period = "10s"
+  }
+
+  wait = true
 
   restart = "unless-stopped"
 
@@ -661,7 +671,7 @@ YAML
     }
   }
 
-  depends_on = [docker_container.dns2socks]
+  depends_on = [docker_container.dns2socks, docker_container.tailscale]
 
   restart = "unless-stopped"
 
