@@ -20,7 +20,7 @@ mkdir -p "$HOME_DIR" "$CERT_DIR" "$HOME_DIR/.config/containers"
 
 # Try to download certs via Tailscale SOCKS5 if available, else fallback to direct
 TS_SOCKS=127.0.0.1:1055
-HOMELAB_BASE="https://homelab.tail4ef781.ts.net/stepca"
+HOMELAB_BASE="http://stepca.service.internal/"
 
 # Default proxy settings for containers launched by nested Podman.
 PODMAN_PROXY_HOST=${PODMAN_PROXY_HOST:-localhost}
@@ -31,7 +31,7 @@ PODMAN_ALL_PROXY=${PODMAN_ALL_PROXY:-socks5h://${PODMAN_PROXY_HOST}:${PODMAN_PRO
 PODMAN_NO_PROXY=${PODMAN_NO_PROXY:-127.0.0.1,localhost,::1}
 
 # Wait for homelab to be reachable (via Tailscale SOCKS5) before fetching certs
-HOMELAB_HOST="https://homelab.tail4ef781.ts.net"
+HOMELAB_HOST="http://stepca.service.internal"
 echo "Waiting for $HOMELAB_HOST to return HTTP 200..."
 until curl --socks5-hostname "$TS_SOCKS" -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$HOMELAB_HOST/" 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
   echo "Waiting for $HOMELAB_HOST to return 200..."
