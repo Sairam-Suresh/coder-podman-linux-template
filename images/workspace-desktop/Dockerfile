@@ -1,4 +1,4 @@
-FROM localhost/workspace:local
+FROM workspace:local
 
 USER root
 
