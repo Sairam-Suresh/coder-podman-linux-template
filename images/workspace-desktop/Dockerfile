@@ -16,7 +16,7 @@ RUN set -eux; \
 RUN cat > /usr/local/bin/google-chrome <<'EOF' && \
     chmod +x /usr/local/bin/google-chrome
 #!/bin/sh
-exec /usr/bin/google-chrome "$@" --disable-dev-shm-usage --no-sandbox
+exec /usr/bin/google-chrome "$@" --disable-dev-shm-usage
 EOF
 
 # Setting the required environment variables
