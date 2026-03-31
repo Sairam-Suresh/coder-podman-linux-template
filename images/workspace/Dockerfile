@@ -67,6 +67,9 @@ RUN export NPM_CONFIG_PREFIX="$HOME/.local" && \
         fi && \
         export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
 
-RUN ssh-keyscan github.com >> $HOME/.ssh/known_hosts
+RUN mkdir -p "$HOME/.ssh" && \
+    chmod 700 "$HOME/.ssh" && \
+    (ssh-keyscan -H github.com >> "$HOME/.ssh/known_hosts" || true) && \
+    chmod 600 "$HOME/.ssh/known_hosts" || true
 
 RUN pipx ensurepath
