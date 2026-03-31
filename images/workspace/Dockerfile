@@ -22,7 +22,7 @@ RUN apt-get update && \
     unzip \
     vim \
     wget \
-    ssh \
+    openssh-client \
     rsync \
     iproute2 \
     podman-remote \
