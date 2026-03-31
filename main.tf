@@ -504,6 +504,7 @@ resource "docker_container" "tailscale" {
   }
 
   wait = true
+  wait_timeout = 600 # 10 minutes
 
   restart = "unless-stopped"
 
