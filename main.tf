@@ -487,7 +487,7 @@ resource "docker_container" "tailscale" {
     container_path = "/var/lib/tailscale"
     volume_name    = docker_volume.tailscale_state.name
     read_only      = false
-    options        = "Z" 
+    permissions        = "rwmZ" 
   }
 
   # Use Pasta networking backend
@@ -683,14 +683,14 @@ YAML
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
     read_only      = false
-    options        = "z" 
+    permissions        = "rwmz" 
   }
 
   volumes {
     container_path = "/run/user/1000/podman"
     volume_name    = docker_volume.podman_socket.name
     read_only      = false
-    options        = "z" 
+    permissions        = "rwmz" 
   }
 
   dynamic "devices" {
@@ -760,14 +760,14 @@ resource "docker_container" "PinP" {
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
     read_only      = false
-    options        = "z" 
+    permissions        = "rwmz" 
   }
 
   volumes {
     container_path = "/tmp/podman/"
     volume_name    = docker_volume.podman_socket.name
     read_only      = false
-    options        = "z" 
+    permissions        = "rwmz" 
   }
   
   labels {
