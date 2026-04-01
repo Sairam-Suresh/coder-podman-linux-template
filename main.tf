@@ -484,10 +484,9 @@ resource "docker_container" "tailscale" {
   ]
 
   volumes {
-    container_path = "/var/lib/tailscale"
+    container_path = "/var/lib/tailscale:Z"
     volume_name    = docker_volume.tailscale_state.name
-    read_only      = false
-    permissions        = "rwmZ" 
+    read_only      = false 
   }
 
   # Use Pasta networking backend
@@ -680,17 +679,15 @@ YAML
   # DNS is configured on the Tailscale container (network owner)
   
   volumes {
-    container_path = "/home/coder"
+    container_path = "/home/coder:z"
     volume_name    = docker_volume.home_volume.name
     read_only      = false
-    permissions        = "rwmz" 
   }
 
   volumes {
-    container_path = "/run/user/1000/podman"
+    container_path = "/run/user/1000/podman:z"
     volume_name    = docker_volume.podman_socket.name
     read_only      = false
-    permissions        = "rwmz" 
   }
 
   dynamic "devices" {
@@ -732,6 +729,7 @@ resource "docker_container" "PinP" {
   name  = "${local.resource_name}-podman"
   
   hostname = "${data.coder_workspace.me.name}-podman"
+
   devices {
     host_path      = "/dev/fuse"
     container_path = "/dev/fuse"
@@ -757,17 +755,15 @@ resource "docker_container" "PinP" {
   restart = "unless-stopped"
 
   volumes {
-    container_path = "/home/coder"
+    container_path = "/home/coder:z"
     volume_name    = docker_volume.home_volume.name
     read_only      = false
-    permissions        = "rwmz" 
   }
 
   volumes {
-    container_path = "/tmp/podman/"
+    container_path = "/tmp/podman/:z"
     volume_name    = docker_volume.podman_socket.name
     read_only      = false
-    permissions        = "rwmz" 
   }
   
   labels {
