@@ -20,37 +20,35 @@ mkdir -p "$HOME_DIR" "$CERT_DIR" "$HOME_DIR/.config/containers"
 
 # Try to download certs via Tailscale SOCKS5 if available, else fallback to direct
 TS_SOCKS=127.0.0.1:1055
-HOMELAB_BASE="http://stepca.service.internal/"
+HOMELAB_BASE="http://stepca.service.internal"
 
 # Default proxy settings for containers launched by nested Podman.
 PODMAN_PROXY_HOST=${PODMAN_PROXY_HOST:-localhost}
 PODMAN_PROXY_PORT=${PODMAN_PROXY_PORT:-1055}
 PODMAN_HTTP_PROXY=${PODMAN_HTTP_PROXY:-http://${PODMAN_PROXY_HOST}:${PODMAN_PROXY_PORT}}
 PODMAN_HTTPS_PROXY=${PODMAN_HTTPS_PROXY:-${PODMAN_HTTP_PROXY}}
-PODMAN_ALL_PROXY=${PODMAN_ALL_PROXY:-socks5h://${PODMAN_PROXY_HOST}:${PODMAN_PROXY_PORT}}
+PODMAN_ALL_PROXY=${PODMAN_ALL_PROXY:-socks5://${PODMAN_PROXY_HOST}:${PODMAN_PROXY_PORT}}
 PODMAN_NO_PROXY=${PODMAN_NO_PROXY:-127.0.0.1,localhost,::1}
 
-# Wait for homelab to be reachable (via Tailscale SOCKS5) before fetching certs
-HOMELAB_HOST="http://stepca.service.internal"
-echo "Waiting for $HOMELAB_HOST to return HTTP 200..."
-until curl --socks5-hostname "$TS_SOCKS" -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$HOMELAB_HOST/" 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
-  echo "Waiting for $HOMELAB_HOST to return 200..."
+# Wait for healthcheck endpoint to be reachable (via Tailscale SOCKS5) before fetching certs
+HOMELAB_HOST="http://healthcheck.service.internal"
+echo "Waiting for $HOMELAB_HOST (healthcheck) to be reachable via SOCKS5..."
+until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$HOMELAB_HOST/" 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+  echo "Waiting for $HOMELAB_HOST (healthcheck) to be reachable via SOCKS5..."
   sleep 1
 done
-echo "$HOMELAB_HOST returned 200; continuing."
+echo "$HOMELAB_HOST reachable via SOCKS5; continuing."
 
-if curl --socks5-hostname "$TS_SOCKS" -fsSL -o "$CERT_DIR/root.crt" "$HOMELAB_BASE/roots.pem"; then
+if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/root.crt" "http://stepca.service.internal/roots.pem"; then
   echo "Downloaded root certificate via SOCKS5"
 else
-  echo "SOCKS5 fetch failed, trying direct download"
-  curl -fsSL -o "$CERT_DIR/root.crt" "$HOMELAB_BASE/roots.pem" || true
+  echo "Failed to download root certificate via SOCKS5; skipping (no direct fallback)"
 fi
 
-if curl --socks5-hostname "$TS_SOCKS" -fsSL -o "$CERT_DIR/intermed.crt" "$HOMELAB_BASE/intermediates.pem"; then
+if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/intermed.crt" "http://stepca.service.internal/intermediates.pem"; then
   echo "Downloaded intermediate certificate via SOCKS5"
 else
-  echo "SOCKS5 fetch failed, trying direct download"
-  curl -fsSL -o "$CERT_DIR/intermed.crt" "$HOMELAB_BASE/intermediates.pem" || true
+  echo "Failed to download intermediate certificate via SOCKS5; skipping (no direct fallback)"
 fi
 
 # Create combined bundle if available
