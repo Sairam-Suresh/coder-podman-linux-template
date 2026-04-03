@@ -301,7 +301,7 @@ module "copilot" {
   agent_id = coder_agent.main[count.index].id
   workdir  = local.workdir
 
-  copilot_version = "1.0.15"
+  copilot_version = "1.0.13"
 
   copilot_config = jsonencode({
     banner = "never"
