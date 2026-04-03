@@ -55,6 +55,9 @@ cat > "$HOME_DIR/.config/containers/containers.conf" <<CONF
 compose_warning_logs = false
 
 [containers]
+net = "host"
+
+[containers]
 netns = "host"
 userns = "keep-id"
 volumes = [
