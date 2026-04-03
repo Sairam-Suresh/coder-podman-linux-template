@@ -54,10 +54,8 @@ cat > "$HOME_DIR/.config/containers/containers.conf" <<CONF
 [engine]
 compose_warning_logs = false
 
-[network]
-default_rootless_network_cmd = "host"
-
 [containers]
+netns = "host"
 userns = "keep-id"
 volumes = [
   "${CERT_DIR}/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro",
