@@ -301,6 +301,11 @@ module "copilot" {
   agent_id = coder_agent.main[count.index].id
   workdir  = local.workdir
 
+  copilot_config = jsonencode({
+    banner = "never"
+    theme  = "dark"
+  })
+
   ai_prompt = data.coder_task.me.prompt
 
   pre_install_script = <<-EOT
