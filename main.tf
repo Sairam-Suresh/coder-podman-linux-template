@@ -408,6 +408,7 @@ resource "docker_image" "PinP" {
     context    = "${path.module}/images/pinp"
     dockerfile = "Dockerfile"
     tag        = ["pinp:local"]
+    use_legacy_builder = true
   }
 
   triggers = {
@@ -425,6 +426,7 @@ resource "docker_image" "dns2socks" {
     context    = "${path.module}/images/dns2socks"
     dockerfile = "Dockerfile"
     tag        = ["dns2socks:local"]
+    use_legacy_builder = true
   }
 
   # Only rebuild if files change
@@ -443,6 +445,7 @@ resource "docker_image" "workspace" {
     context    = "${path.module}/images/workspace"
     dockerfile = "Dockerfile"
     tag        = ["workspace:local"]
+    use_legacy_builder = true
   }
 
   # Only rebuild if files change
@@ -462,6 +465,7 @@ resource "docker_image" "workspace_desktop" {
     context    = "${path.module}/images/workspace-desktop"
     dockerfile = "Dockerfile"
     tag        = ["workspace_desktop:local"]
+    use_legacy_builder = true
   }
 
   # Only rebuild if files change
@@ -493,6 +497,7 @@ resource "docker_container" "tailscale" {
   volumes {
     container_path = "/var/lib/tailscale"
     volume_name    = docker_volume.tailscale_state.name
+    selinux_relabel = "Z"
   }
 
   # Use Pasta networking backend
@@ -687,11 +692,13 @@ YAML
   volumes {
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
+    selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
 
   volumes {
     container_path = "/run/user/1000/podman"
     volume_name    = docker_volume.podman_socket.name
+    selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
 
   dynamic "devices" {
@@ -761,11 +768,13 @@ resource "docker_container" "PinP" {
   volumes {
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
+    selinux_relabel = "z"
   }
 
   volumes {
     container_path = "/tmp/podman/"
     volume_name    = docker_volume.podman_socket.name
+    selinux_relabel = "z"
   }
   
   labels {
