@@ -73,7 +73,6 @@ data "coder_parameter" "enable_gpu" {
   description  = "Mount host GPU devices /dev/dri/card0 and /dev/dri/renderD128 into the workspace container for hardware acceleration."
   # Force-enable and make read-only when Desktop Environment is selected
   default      = data.coder_parameter.install_de.value == "true" ? "true" : "false"
-  mutable      = data.coder_parameter.install_de.value == "true" ? false : true
 }
 
 data "coder_parameter" "repo_url" {
@@ -311,6 +310,10 @@ module "copilot" {
   ai_prompt = data.coder_task.me.prompt
 
   pre_install_script = <<-EOT
+    if [ "${data.coder_parameter.install_de.value}" = "true" ]; then
+      npm install -g @playwright/cli@latest
+      playwright-cli install --skills
+    fi
   EOT
 }
 
