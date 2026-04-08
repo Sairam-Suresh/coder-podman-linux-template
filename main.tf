@@ -73,6 +73,7 @@ data "coder_parameter" "enable_gpu" {
   description  = "Mount host GPU devices /dev/dri/card0 and /dev/dri/renderD128 into the workspace container for hardware acceleration."
   # Force-enable and make read-only when Desktop Environment is selected
   default      = data.coder_parameter.install_de.value == "true" ? "true" : "false"
+  mutable      = true
 }
 
 data "coder_parameter" "repo_url" {
