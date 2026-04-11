@@ -683,6 +683,7 @@ YAML
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
     "HTTPS_PROXY=http://localhost:1055/",
+    "NO_PROXY=localhost,127.0.0.1,::1",
     "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock",
     "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock",
     "INSTALL_DE=${data.coder_parameter.install_de.value}"
