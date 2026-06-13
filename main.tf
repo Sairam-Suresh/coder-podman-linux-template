@@ -27,18 +27,6 @@ locals {
   container_image = data.coder_parameter.install_de.value == "true" ? docker_image.workspace_desktop[0].image_id : docker_image.workspace.image_id
 }
 
-variable "docker_socket" {
-  default     = ""
-  description = "(Optional) Docker socket URI"
-  type        = string
-}
-
-variable "tailscale_auth_key" {
-  type        = string
-  description = "Tailscale auth key injected at apply time (for example via tfvars or TF_VAR_tailscale_auth_key)."
-  sensitive   = true
-}
-
 data "coder_parameter" "install_de" {
   type         = "bool"
   name         = "install_de"
@@ -95,7 +83,8 @@ data "coder_parameter" "manual_folder_name" {
 
 provider "docker" {
   # Defaulting to null if the variable is an empty string lets us have an optional variable without having to set our own default
-  host = var.docker_socket != "" ? var.docker_socket : null
+  host = "ssh://workspaces@192.168.18.25:22"
+  ssh_opts = ["-o", "StrictHostKeyChecking=no"]
 }
 
 data "coder_provisioner" "me" {}
@@ -120,10 +109,9 @@ module "git-commit-signing" {
 }
 
 resource "coder_agent" "main" {
-  arch           = data.coder_provisioner.me.arch
+  arch           = "amd64"
   os             = "linux"
   count          = data.coder_workspace.me.start_count
-  dir            = local.workdir
   startup_script = <<-EOT
     set -e
 
@@ -371,22 +359,6 @@ resource "docker_volume" "home_volume" {
   }
 }
 
-# Persistent volume for Tailscale state
-resource "docker_volume" "tailscale_state" {
-  name = "coder-${data.coder_workspace.me.id}-tailscale"
-  lifecycle {
-    ignore_changes = all
-  }
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-}
-
 # Persistent volume for bind-mounting the rootless podman socket between the podman and workspace containers
 resource "docker_volume" "podman_socket" {
   name = "coder-${data.coder_workspace.me.id}-podman-socket"
@@ -479,61 +451,7 @@ resource "docker_image" "workspace_desktop" {
   }
 }
 
-# Tailscale sidecar container with userspace networking mode
-resource "docker_container" "tailscale" {
-  count = data.coder_workspace.me.start_count
-  image = "tailscale/tailscale:latest"
-  name  = "${local.resource_name}-tailscale"
-  
-  hostname = data.coder_workspace.me.name
-  
-  # Userspace networking mode configuration
-  env = [
-    "TS_AUTHKEY=${var.tailscale_auth_key}",
-    "TS_STATE_DIR=/var/lib/tailscale",
-    "TS_SOCKET=/var/run/tailscale/tailscaled.sock",
-    "TS_USERSPACE=true",
-    "TS_SOCKS5_SERVER=:1055",
-    "TS_OUTBOUND_HTTP_PROXY_LISTEN=:1055",
-    "TS_TAILSCALED_EXTRA_ARGS=--port=${local.ts_port}"
-  ]
-
-  volumes {
-    container_path = "/var/lib/tailscale"
-    volume_name    = docker_volume.tailscale_state.name
-    selinux_relabel = "Z"
-  }
-
-  # Use Pasta networking backend
-  network_mode = "pasta"
-
-  # Configure DNS to use only localhost (DNS2Socks will be listening on port 53)
-  dns = ["127.0.0.1"]
-  
-  healthcheck {
-    test         = ["CMD-SHELL", "tailscale status --json | grep BackendState | grep -q Running"]
-    interval     = "10s"
-    timeout      = "5s"
-    retries      = 3
-    start_period = "10s"
-  }
-
-  wait = true
-  wait_timeout = 600 # 10 minutes
-
-  restart = "unless-stopped"
-
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-}
-
-# DNS2Socks container for DNS resolution via Tailscale SOCKS5 proxy
+# DNS2Socks container for DNS resolution via external SOCKS5 proxy
 resource "docker_container" "dns2socks" {
   count = data.coder_workspace.me.start_count
   image = docker_image.dns2socks.image_id
@@ -541,20 +459,20 @@ resource "docker_container" "dns2socks" {
   
   hostname = "${data.coder_workspace.me.name}-dns"
 
+  # Use Pasta networking backend
+  network_mode = "pasta"
+
+  # Configure DNS to use only localhost (DNS2Socks will be listening on port 53)
+  dns = ["127.0.0.1"]
+
   env = [
     "LISTEN_ADDR=127.0.0.1:53",
-    "DNS_REMOTE_SERVER=100.87.51.78:53",  # Tailscale MagicDNS
-    "SOCKS5_SETTINGS=socks5://127.0.0.1:1055",
+    "DNS_REMOTE_SERVER=100.87.51.78:53",
+    "SOCKS5_SETTINGS=socks5://192.168.18.9:1055",
     "VERBOSITY=info",
     "CACHE_RECORDS=true",
     "FORCE_TCP=true"    
   ]
-
-  # Share the network namespace with the Tailscale container
-  network_mode = "container:${docker_container.tailscale[count.index].name}"
-
-  # Wait for Tailscale and the podman volume initializer to be ready
-  depends_on = [docker_container.tailscale]
 
   restart = "unless-stopped"
 
@@ -584,7 +502,7 @@ resource "docker_container" "workspace" {
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
     echo "Waiting for http://healthcheck.service.internal/ to return HTTP 200..."
-    until curl --socks5-hostname 127.0.0.1:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+    until curl -x socks5://192.168.18.9:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
       echo "Waiting for http://healthcheck.service.internal/ to return 200..."
       sleep 1
     done
@@ -599,14 +517,14 @@ resource "docker_container" "workspace" {
     mkdir -p "$CERT_DIR"
     
     # Download root certificate (using SOCKS5 proxy via curl)
-    if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
+    if curl -x socks5://192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
       echo "Successfully downloaded root certificate"
     else
       echo "Warning: Failed to download root certificate"
     fi
     
     # Download intermediate certificate
-    if curl --socks5-hostname 127.0.0.1:1055 -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
+    if curl -x socks5://192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
       echo "Successfully downloaded intermediate certificate"
     else
       echo "Warning: Failed to download intermediate certificate"
@@ -682,17 +600,15 @@ YAML
   
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
-    "HTTPS_PROXY=http://localhost:1055/",
+    "HTTPS_PROXY=socks5://192.168.18.9:1055/",
     "NO_PROXY=localhost,127.0.0.1,::1",
     "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock",
     "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock",
     "INSTALL_DE=${data.coder_parameter.install_de.value}"
   ]
 
-  # Share the network namespace with the Tailscale container
-  network_mode = "container:${docker_container.tailscale[count.index].name}"
-  
-  # DNS is configured on the Tailscale container (network owner)
+  # Share the network namespace with the dns2socks container
+  network_mode = "container:${docker_container.dns2socks[count.index].name}"
   
   volumes {
     container_path = "/home/coder"
@@ -715,7 +631,7 @@ YAML
     }
   }
 
-  depends_on = [docker_container.dns2socks, docker_container.tailscale]
+  depends_on = [docker_container.dns2socks]
 
   restart = "unless-stopped"
 
@@ -762,11 +678,11 @@ resource "docker_container" "PinP" {
   #   add = ["SYS_ADMIN"]
   # }
 
-  # Share the network namespace with the Tailscale container
-  network_mode = "container:${docker_container.tailscale[count.index].name}"
+  # Share the network namespace with the dns2socks container
+  network_mode = "container:${docker_container.dns2socks[count.index].name}"
 
-  # Wait for Tailscale to be ready
-  depends_on = [docker_container.tailscale]
+  # Wait for dns2socks to be ready
+  depends_on = [docker_container.dns2socks]
 
   restart = "unless-stopped"
 
