@@ -83,7 +83,7 @@ data "coder_parameter" "manual_folder_name" {
 
 provider "docker" {
   # Defaulting to null if the variable is an empty string lets us have an optional variable without having to set our own default
-  host = "ssh://workspaces@192.168.18.25:22"
+  host = "ssh://workspaces@host.containers.internal:22"
   ssh_opts = ["-o", "StrictHostKeyChecking=no"]
 }
 
@@ -333,7 +333,7 @@ module "devcontainers-cli" {
 }
 
 resource "docker_volume" "home_volume" {
-  name = "coder-${data.coder_workspace.me.id}-home"
+  name = "coder-${data.coder_workspace.me.name}-home"
   # Protect the volume from being deleted due to changes in attributes.
   lifecycle {
     ignore_changes = all
@@ -361,7 +361,7 @@ resource "docker_volume" "home_volume" {
 
 # Persistent volume for bind-mounting the rootless podman socket between the podman and workspace containers
 resource "docker_volume" "podman_socket" {
-  name = "coder-${data.coder_workspace.me.id}-podman-socket"
+  name = "coder-${data.coder_workspace.me.name}-podman-socket"
   lifecycle {
     ignore_changes = all
   }
@@ -385,30 +385,17 @@ resource "docker_image" "PinP" {
     dockerfile = "Dockerfile"
     tag        = ["pinp:local"]
     use_legacy_builder = true
+    build_args = {
+      http_proxy: "http://192.168.18.9:1055"
+      https_proxy: "http://192.168.18.9:1055"
+      HTTPS_PROXY: "http://192.168.18.9:1055"
+      HTTP_PROXY: "http://192.168.18.9:1055"
+    }
   }
 
   triggers = {
     dockerfile_hash  = filesha256("${path.module}/images/pinp/Dockerfile")
     entrypoint_hash  = filesha256("${path.module}/images/pinp/entrypoint.sh")
-  }
-}
-
-# Build the DNS2Socks image if it doesn't exist (persistent across workspace deletions)
-resource "docker_image" "dns2socks" {
-  name = "dns2socks:local"
-  keep_locally = true  # Don't delete on workspace destruction
-  
-  build {
-    context    = "${path.module}/images/dns2socks"
-    dockerfile = "Dockerfile"
-    tag        = ["dns2socks:local"]
-    use_legacy_builder = true
-  }
-
-  # Only rebuild if files change
-  triggers = {
-    dockerfile_hash  = filesha256("${path.module}/images/dns2socks/Dockerfile")
-    entrypoint_hash  = filesha256("${path.module}/images/dns2socks/entrypoint.sh")
   }
 }
 
@@ -422,6 +409,12 @@ resource "docker_image" "workspace" {
     dockerfile = "Dockerfile"
     tag        = ["workspace:local"]
     use_legacy_builder = true
+    build_args = {
+      http_proxy: "http://192.168.18.9:1055"
+      https_proxy: "http://192.168.18.9:1055"
+      HTTPS_PROXY: "http://192.168.18.9:1055"
+      HTTP_PROXY: "http://192.168.18.9:1055"
+    }
   }
 
   # Only rebuild if files change
@@ -442,47 +435,18 @@ resource "docker_image" "workspace_desktop" {
     dockerfile = "Dockerfile"
     tag        = ["workspace_desktop:local"]
     use_legacy_builder = true
+    build_args = {
+      http_proxy: "http://192.168.18.9:1055"
+      https_proxy: "http://192.168.18.9:1055"
+      HTTPS_PROXY: "http://192.168.18.9:1055"
+      HTTP_PROXY: "http://192.168.18.9:1055"
+    }
   }
 
   # Only rebuild if files change
   triggers = {
     dockerfile_hash      = filesha256("${path.module}/images/workspace-desktop/Dockerfile")
     workspace_image_id   = docker_image.workspace.image_id
-  }
-}
-
-# DNS2Socks container for DNS resolution via external SOCKS5 proxy
-resource "docker_container" "dns2socks" {
-  count = data.coder_workspace.me.start_count
-  image = docker_image.dns2socks.image_id
-  name  = "${local.resource_name}-dns2socks"
-  
-  hostname = "${data.coder_workspace.me.name}-dns"
-
-  # Use Pasta networking backend
-  network_mode = "pasta"
-
-  # Configure DNS to use only localhost (DNS2Socks will be listening on port 53)
-  dns = ["127.0.0.1"]
-
-  env = [
-    "LISTEN_ADDR=127.0.0.1:53",
-    "DNS_REMOTE_SERVER=100.87.51.78:53",
-    "SOCKS5_SETTINGS=socks5://192.168.18.9:1055",
-    "VERBOSITY=info",
-    "CACHE_RECORDS=true",
-    "FORCE_TCP=true"    
-  ]
-
-  restart = "unless-stopped"
-
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
   }
 }
 
@@ -493,6 +457,11 @@ resource "docker_container" "workspace" {
   name = local.resource_name
   # Hostname makes the shell more user friendly: coder@my-workspace:~$
   hostname = "${data.coder_workspace.me.name}"
+
+  # Use Pasta networking backend
+  network_mode = "pasta"
+
+  userns_mode = "keep-id"
   
   # Custom entrypoint that waits for Tailscale and trusts certificates BEFORE starting the agent
   entrypoint = ["bash", "-c"]
@@ -502,13 +471,13 @@ resource "docker_container" "workspace" {
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
     echo "Waiting for http://healthcheck.service.internal/ to return HTTP 200..."
-    until curl -x socks5://192.168.18.9:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+    until curl --socks5-hostname 192.168.18.9:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
       echo "Waiting for http://healthcheck.service.internal/ to return 200..."
       sleep 1
     done
     echo "http://healthcheck.service.internal/ returned 200; continuing."
 
-    sudo apt update
+    sudo -E apt update
 
     echo "Downloading homelab certificates..."
     
@@ -517,14 +486,14 @@ resource "docker_container" "workspace" {
     mkdir -p "$CERT_DIR"
     
     # Download root certificate (using SOCKS5 proxy via curl)
-    if curl -x socks5://192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
+    if curl --socks5-hostname 192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
       echo "Successfully downloaded root certificate"
     else
       echo "Warning: Failed to download root certificate"
     fi
     
     # Download intermediate certificate
-    if curl -x socks5://192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
+    if curl --socks5-hostname 192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
       echo "Successfully downloaded intermediate certificate"
     else
       echo "Warning: Failed to download intermediate certificate"
@@ -600,15 +569,15 @@ YAML
   
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
-    "HTTPS_PROXY=socks5://192.168.18.9:1055/",
+    "HTTPS_PROXY=http://192.168.18.9:1055/",
+    "HTTP_PROXY=http://192.168.18.9:1055/",
+    "http_proxy=http://192.168.18.9:1055/",
+    "https_proxy=http://192.168.18.9:1055/",
     "NO_PROXY=localhost,127.0.0.1,::1",
     "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock",
     "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock",
     "INSTALL_DE=${data.coder_parameter.install_de.value}"
   ]
-
-  # Share the network namespace with the dns2socks container
-  network_mode = "container:${docker_container.dns2socks[count.index].name}"
   
   volumes {
     container_path = "/home/coder"
@@ -630,8 +599,6 @@ YAML
       permissions    = "rwm"
     }
   }
-
-  depends_on = [docker_container.dns2socks]
 
   restart = "unless-stopped"
 
@@ -668,21 +635,32 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
+  userns_mode = "keep-id"
+
   security_opts = [
     "label:disable",
-    # "seccomp=unconfined",
+    "seccomp=unconfined",
   ]
 
   # Allow PinP to perform operations that require additional privileges (e.g. mounting)
-  # capabilities {
-  #   add = ["SYS_ADMIN"]
-  # }
+  capabilities {
+    # SYS_ADMIN
+    add = ["SYS_PTRACE"]
+  }
 
   # Share the network namespace with the dns2socks container
-  network_mode = "container:${docker_container.dns2socks[count.index].name}"
+  network_mode = "container:${docker_container.workspace[count.index].name}"
+
+  env = [
+    "HTTPS_PROXY=http://192.168.18.9:1055/",
+    "HTTP_PROXY=http://192.168.18.9:1055/",
+    "http_proxy=http://192.168.18.9:1055/",
+    "https_proxy=http://192.168.18.9:1055/",
+    "NO_PROXY=localhost,127.0.0.1,::1",
+  ]
 
   # Wait for dns2socks to be ready
-  depends_on = [docker_container.dns2socks]
+  depends_on = [docker_container.workspace]
 
   restart = "unless-stopped"
 
