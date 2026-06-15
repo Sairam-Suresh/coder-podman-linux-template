@@ -13,8 +13,6 @@ locals {
   username = data.coder_workspace_owner.me.name
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
-  workspace_hash_int = parseint(substr(md5(data.coder_workspace.me.id), 0, 7), 16)
-  ts_port = 40000 + (local.workspace_hash_int % 300)
   
   # Calculate the working directory based on git clone settings
   folder_name = data.coder_parameter.enable_git_clone.value == "true" ? replace(basename(try(data.coder_parameter.repo_url[0].value, "")), "/\\.git$/", "") : try(data.coder_parameter.manual_folder_name[0].value, "")

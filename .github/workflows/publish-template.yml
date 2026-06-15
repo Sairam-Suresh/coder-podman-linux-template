@@ -20,21 +20,23 @@ jobs:
         with:
             oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
             oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-            tags: tag:ci,tag:ci-coder
-            ping: coder
-    
-      - name: Remove Tailscale DNS
-        run: |
-          sudo tailscale set --accept-dns=false
+            tags: tag:ci
+            ping: homelab
         
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create Terraform secrets file
+      - name: Install Custom CA Certificate (Ubuntu)
         run: |
-          cat > secrets.auto.tfvars <<EOF
-          tailscale_auth_key = "${{ secrets.TAILSCALE_AUTH_KEY }}"
-          EOF
+          # Decode the certificate from secrets into the OS trusted certificate path
+          echo "${{ secrets.INTERNAL_CA_CERT }}" | base64 --decode | sudo tee /usr/local/share/ca-certificates/internal-ca.crt
+          
+          # Update the system trust store
+          sudo update-ca-certificates
+          
+          # Optional: Set environment variables for tools that bypass the default OS trust store
+          echo "SSL_CERT_DIR=/etc/ssl/certs" >> $GITHUB_ENV
+          echo "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt" >> $GITHUB_ENV
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
@@ -44,7 +46,7 @@ jobs:
       - name: Set up Coder CLI
         uses: coder/setup-action@v1
         with:
-          access_url: "http://100.96.35.98:7080"
+          access_url: "https://coder.service.internal"
           coder_session_token: ${{ secrets.CODER_SESSION_TOKEN }}
 
       - name: Validate Terraform template
@@ -68,7 +70,6 @@ jobs:
           mkdir -p "$TEMPLATE_SRC_DIR"
 
           cp "$GITHUB_WORKSPACE/main.tf" "$TEMPLATE_SRC_DIR/"
-          cp "$GITHUB_WORKSPACE/secrets.auto.tfvars" "$TEMPLATE_SRC_DIR/"
           cp "$GITHUB_WORKSPACE/README.md" "$TEMPLATE_SRC_DIR/"
           cp -r "$GITHUB_WORKSPACE/images/" "$TEMPLATE_SRC_DIR/images/"
           
