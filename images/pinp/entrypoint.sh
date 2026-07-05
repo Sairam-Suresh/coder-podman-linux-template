@@ -73,6 +73,10 @@ driver = "overlay"
 runroot = "/run/containers/storage"
 graphroot = "/var/lib/containers/storage"
 
+[storage.options]
+mount_program = "/usr/bin/fuse-overlayfs"
+ignore_chown_errors = true
+
 [storage.options.overlay]
 ignore_chown_errors = "true"
 mountopt = "nodev,metacopy=off,index=off"

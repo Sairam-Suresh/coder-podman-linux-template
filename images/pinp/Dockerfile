@@ -4,7 +4,7 @@ SHELL ["/bin/bash", "-c"]
 
 USER root
 
-RUN printf "root:100000:65536" | tee /etc/subuid /etc/subgid
+RUN printf "root:100000:65536" | tee -a /etc/subuid /etc/subgid
 
 # Copy entrypoint provided by the repo and make it executable
 COPY entrypoint.sh /entrypoint.sh
