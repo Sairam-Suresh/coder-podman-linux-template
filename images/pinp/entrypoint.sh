@@ -69,7 +69,7 @@ CONF
 mkdir -p /etc/containers
 cat > /etc/containers/storage.conf <<EOF
 [storage]
-driver = "vfs"
+driver = "overlay"
 runroot = "/run/containers/storage"
 graphroot = "/var/lib/containers/storage"
 EOF

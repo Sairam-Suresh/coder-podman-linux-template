@@ -364,6 +364,21 @@ resource "docker_volume" "podman_socket" {
   }
 }
 
+resource "docker_volume" "podman_storage" {
+  name = "coder-${data.coder_workspace.me.name}-podman-storage"
+  lifecycle {
+    ignore_changes = all
+  }
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+}
+
 resource "docker_image" "PinP" {
   name = "pinp:local"
   keep_locally = true
@@ -617,6 +632,12 @@ resource "docker_container" "PinP" {
   volumes {
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
+    selinux_relabel = "z"
+  }
+
+  volumes {
+    container_path = "/var/lib/containers"
+    volume_name    = docker_volume.podman_storage.name
     selinux_relabel = "z"
   }
 
