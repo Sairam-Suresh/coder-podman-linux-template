@@ -58,6 +58,8 @@ compose_warning_logs = false
 netns = "host"
 net = "host"
 userns = "keep-id"
+seccomp_profile = "unconfined"
+add_capabilities = ["SYS_PTRACE", "SYS_ADMIN"]
 volumes = [
   "${CERT_DIR}/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro",
   "${CERT_DIR}/ca-bundle.crt:/etc/pki/tls/certs/ca-bundle.crt:ro",

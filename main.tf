@@ -147,11 +147,6 @@ resource "coder_agent" "main" {
     DISPLAY             = ":1"
   }
 
-  # The following metadata blocks are optional. They are used to display
-  # information about your workspace in the dashboard. You can remove them
-  # if you don't want to display any information.
-  # For basic resources, you can use the `coder stat` command.
-  # If you need more control, you can write your own script.
   metadata {
     display_name = "CPU Usage"
     key          = "0_cpu_usage"
@@ -336,7 +331,6 @@ resource "docker_volume" "home_volume" {
   lifecycle {
     ignore_changes = all
   }
-  # Add labels in Docker to keep track of orphan resources.
   labels {
     label = "coder.owner"
     value = data.coder_workspace_owner.me.name
@@ -349,15 +343,12 @@ resource "docker_volume" "home_volume" {
     label = "coder.workspace_id"
     value = data.coder_workspace.me.id
   }
-  # This field becomes outdated if the workspace is renamed but can
-  # be useful for debugging or cleaning out dangling volumes.
   labels {
     label = "coder.workspace_name_at_creation"
     value = data.coder_workspace.me.name
   }
 }
 
-# Persistent volume for bind-mounting the rootless podman socket between the podman and workspace containers
 resource "docker_volume" "podman_socket" {
   name = "coder-${data.coder_workspace.me.name}-podman-socket"
   lifecycle {
@@ -373,7 +364,6 @@ resource "docker_volume" "podman_socket" {
   }
 }
 
-# Build local Podman-in-Podman image (allows custom entrypoint)
 resource "docker_image" "PinP" {
   name = "pinp:local"
   keep_locally = true
@@ -397,63 +387,32 @@ resource "docker_image" "PinP" {
   }
 }
 
-# Build the workspace (no desktop) image if it doesn't exist (persistent across workspace deletions)
-resource "docker_image" "workspace" {
-  name = "workspace:local"
-  keep_locally = true  # Don't delete on workspace destruction
-  
-  build {
-    context    = "${path.module}/images/workspace"
-    dockerfile = "Dockerfile"
-    tag        = ["workspace:local"]
-    use_legacy_builder = true
-    build_args = {
-      http_proxy: "http://192.168.18.9:1055"
-      https_proxy: "http://192.168.18.9:1055"
-      HTTPS_PROXY: "http://192.168.18.9:1055"
-      HTTP_PROXY: "http://192.168.18.9:1055"
-    }
-  }
-
-  # Only rebuild if files change
-  triggers = {
-    dockerfile_hash  = filesha256("${path.module}/images/workspace/Dockerfile")
-  }
+data "docker_registry_image" "workspace" {
+  name = "ghcr.io/sairam-suresh/workspace:latest"
 }
 
-# Desktop variant built on top of the `workspace` image. Built after `workspace` is available.
-resource "docker_image" "workspace_desktop" {
+resource "docker_image" "workspace" {
+  name          = data.docker_registry_image.workspace.name
+  pull_triggers = [data.docker_registry_image.workspace.sha256_digest]
+  keep_locally  = true  # Don't delete on workspace destruction
+}
+
+data "docker_registry_image" "workspace_desktop" {
   count = data.coder_parameter.install_de.value == "true" ? 1 : 0
-  name = "workspace_desktop:local"
-  keep_locally = true
-  depends_on = [docker_image.workspace]
+  name  = "ghcr.io/sairam-suresh/workspace-desktop:latest"
+}
 
-  build {
-    context    = "${path.module}/images/workspace-desktop"
-    dockerfile = "Dockerfile"
-    tag        = ["workspace_desktop:local"]
-    use_legacy_builder = true
-    build_args = {
-      http_proxy: "http://192.168.18.9:1055"
-      https_proxy: "http://192.168.18.9:1055"
-      HTTPS_PROXY: "http://192.168.18.9:1055"
-      HTTP_PROXY: "http://192.168.18.9:1055"
-    }
-  }
-
-  # Only rebuild if files change
-  triggers = {
-    dockerfile_hash      = filesha256("${path.module}/images/workspace-desktop/Dockerfile")
-    workspace_image_id   = docker_image.workspace.image_id
-  }
+resource "docker_image" "workspace_desktop" {
+  count         = data.coder_parameter.install_de.value == "true" ? 1 : 0
+  name          = data.docker_registry_image.workspace_desktop[0].name
+  pull_triggers = [data.docker_registry_image.workspace_desktop[0].sha256_digest]
+  keep_locally  = true
 }
 
 resource "docker_container" "workspace" {
   count = data.coder_workspace.me.start_count
   image = local.container_image
-  # Uses lower() to avoid Docker restriction on container names.
   name = local.resource_name
-  # Hostname makes the shell more user friendly: coder@my-workspace:~$
   hostname = "${data.coder_workspace.me.name}"
 
   # Use Pasta networking backend
@@ -461,7 +420,6 @@ resource "docker_container" "workspace" {
 
   userns_mode = "keep-id"
   
-  # Custom entrypoint that waits for Tailscale and trusts certificates BEFORE starting the agent
   entrypoint = ["bash", "-c"]
   command = [<<-EOT
     set -e
@@ -600,7 +558,6 @@ YAML
 
   restart = "unless-stopped"
 
-  # Add labels in Docker to keep track of orphan resources.
   labels {
     label = "coder.owner"
     value = data.coder_workspace_owner.me.name
@@ -642,11 +599,9 @@ resource "docker_container" "PinP" {
 
   # Allow PinP to perform operations that require additional privileges (e.g. mounting)
   capabilities {
-    # SYS_ADMIN
-    add = ["SYS_PTRACE"]
+    add = ["SYS_ADMIN", "SYS_PTRACE"]
   }
 
-  # Share the network namespace with the dns2socks container
   network_mode = "container:${docker_container.workspace[count.index].name}"
 
   env = [
@@ -657,7 +612,6 @@ resource "docker_container" "PinP" {
     "NO_PROXY=localhost,127.0.0.1,::1",
   ]
 
-  # Wait for dns2socks to be ready
   depends_on = [docker_container.workspace]
 
   restart = "unless-stopped"
