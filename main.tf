@@ -590,7 +590,7 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
-  userns_mode = "keep-id"
+  userns_mode = "keep-id:uid=1000,gid=1000"
 
   security_opts = [
     "label:disable",
