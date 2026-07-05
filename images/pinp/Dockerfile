@@ -4,8 +4,7 @@ SHELL ["/bin/bash", "-c"]
 
 USER root
 
-RUN printf "podman:100000:131072\n" | tee /etc/subuid /etc/subgid && \
-    podman system migrate
+RUN printf "root:1:65536\n" | tee /etc/subuid /etc/subgid
 
 # Copy entrypoint provided by the repo and make it executable
 COPY entrypoint.sh /entrypoint.sh
