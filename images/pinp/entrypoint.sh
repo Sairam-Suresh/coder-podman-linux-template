@@ -75,6 +75,7 @@ graphroot = "/var/lib/containers/storage"
 
 [storage.options.overlay]
 ignore_chown_errors = "true"
+mountopt = "nodev,metacopy=off"
 EOF
 
 # Initialize and expose socket
