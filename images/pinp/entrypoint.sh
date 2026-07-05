@@ -66,6 +66,18 @@ env = [
 ]
 CONF
 
+mkdir -p /etc/containers
+cat > /etc/containers/storage.conf <<EOF
+[storage]
+driver = "overlay"
+runroot = "/run/containers/storage"
+graphroot = "/var/lib/containers/storage"
+
+[storage.options]
+ignore_chown_errors = true
+EOF
+
+# Initialize and expose socket
 SOCKET_PATH="/tmp/podman/podman.sock"
 mkdir -p "$(dirname "$SOCKET_PATH")"
 rm -f "$SOCKET_PATH"
