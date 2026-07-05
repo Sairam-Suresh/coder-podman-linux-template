@@ -591,15 +591,11 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
-  userns_mode = "keep-id:uid=1000,gid=1000"
-  user = "1000:1000"
-
   security_opts = [
     "label:disable",
     "seccomp=unconfined",
   ]
 
-  # Allow PinP to perform operations that require additional privileges (e.g. mounting)
   capabilities {
     add = ["SYS_ADMIN", "SYS_PTRACE"]
   }
