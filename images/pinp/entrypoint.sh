@@ -75,7 +75,7 @@ graphroot = "/var/lib/containers/storage"
 
 [storage.options]
 mount_program = "/usr/bin/fuse-overlayfs"
-ignore_chown_errors = true
+ignore_chown_errors = "true"
 
 [storage.options.overlay]
 ignore_chown_errors = "true"
