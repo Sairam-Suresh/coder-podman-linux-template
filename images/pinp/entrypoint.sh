@@ -73,7 +73,7 @@ driver = "overlay"
 runroot = "/run/containers/storage"
 graphroot = "/var/lib/containers/storage"
 
-[storage.options]
+[storage.options.overlay]
 ignore_chown_errors = "true"
 EOF
 
