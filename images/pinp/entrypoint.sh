@@ -75,6 +75,7 @@ graphroot = "/var/lib/containers/storage"
 
 [storage.options.overlay]
 ignore_chown_errors = "true"
+mount_program = "/usr/bin/fuse-overlayfs"
 EOF
 
 # Initialize and expose socket
