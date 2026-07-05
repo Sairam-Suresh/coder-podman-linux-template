@@ -418,7 +418,8 @@ resource "docker_container" "workspace" {
   # Use Pasta networking backend
   network_mode = "pasta"
 
-  userns_mode = "keep-id"
+  userns_mode = "keep-id:uid=1000,gid=1000"
+  user = "1000:1000"
   
   entrypoint = ["bash", "-c"]
   command = [<<-EOT
