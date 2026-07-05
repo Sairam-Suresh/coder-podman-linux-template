@@ -69,13 +69,9 @@ CONF
 mkdir -p /etc/containers
 cat > /etc/containers/storage.conf <<EOF
 [storage]
-driver = "overlay"
+driver = "vfs"
 runroot = "/run/containers/storage"
 graphroot = "/var/lib/containers/storage"
-
-[storage.options.overlay]
-ignore_chown_errors = "true"
-mountopt = "nodev,metacopy=off"
 EOF
 
 # Initialize and expose socket
