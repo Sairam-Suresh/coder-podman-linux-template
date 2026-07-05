@@ -606,6 +606,8 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
+  privileged = true
+
   security_opts = [
     "label:disable",
     "seccomp=unconfined",
