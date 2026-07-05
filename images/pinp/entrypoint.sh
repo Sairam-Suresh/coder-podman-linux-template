@@ -57,7 +57,6 @@ compose_warning_logs = false
 [containers]
 netns = "host"
 net = "host"
-userns = "keep-id"
 seccomp_profile = "unconfined"
 add_capabilities = ["SYS_PTRACE", "SYS_ADMIN"]
 volumes = [
