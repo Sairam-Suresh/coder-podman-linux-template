@@ -597,6 +597,8 @@ resource "docker_container" "PinP" {
   count = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
   image = docker_image.PinP.image_id
   name  = "${local.resource_name}-podman"
+
+  userns_mode  = "host"
   
   hostname = "${data.coder_workspace.me.name}-podman"
 
