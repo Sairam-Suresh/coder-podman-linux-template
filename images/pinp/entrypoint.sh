@@ -74,7 +74,7 @@ runroot = "/run/containers/storage"
 graphroot = "/var/lib/containers/storage"
 
 [storage.options]
-ignore_chown_errors = true
+ignore_chown_errors = "true"
 EOF
 
 # Initialize and expose socket
