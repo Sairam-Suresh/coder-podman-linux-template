@@ -627,7 +627,6 @@ resource "docker_container" "PinP" {
     permissions    = "rwm"
   }
 
-  privileged = true
 
   security_opts = [
     "label:disable",
@@ -635,7 +634,7 @@ resource "docker_container" "PinP" {
   ]
 
   capabilities {
-    add = ["SYS_ADMIN", "SYS_PTRACE"]
+    add = ["SYS_ADMIN", "SYS_PTRACE", "MKNOD"]
   }
 
   network_mode = "container:${docker_container.workspace[count.index].name}"
