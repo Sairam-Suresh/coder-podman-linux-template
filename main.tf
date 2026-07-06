@@ -753,3 +753,27 @@ resource "coder_devcontainer" "devcontainer" {
   agent_id = coder_agent.main[count.index].id
   workspace_folder = local.workdir
 }
+
+module "code-server-subagent" {
+  count  = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? 1 : 0
+  source = "registry.coder.com/coder/code-server/coder"
+  version = "~> 1.0"
+  folder = "/workspaces/${local.folder_name}"
+  extensions = ["catppuccin.catppuccin-vsc-icons", "github.vscode-pull-request-github", "catppuccin.catppuccin-vsc"]
+
+  open_in = "tab"
+  slug    = "code-server-devcontainer"
+  port    = "13331"
+
+  settings = {
+    "git.autofetch": true,
+    "git.enableSmartCommit": true,
+    "git.confirmSync": false,
+    "workbench.iconTheme": "catppuccin-mocha",
+    "workbench.colorTheme": "Catppuccin Mocha"
+  }
+
+  subdomain = true
+  agent_id  = coder_devcontainer.devcontainer[count.index].subagent_id
+  order     = 1
+}
