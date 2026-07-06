@@ -683,7 +683,7 @@ resource "docker_container" "PinP" {
   name  = "${local.resource_name}-podman"
 
   userns_mode  = "host"
-  privileged   = false
+  privileged   = true
   hostname     = "${data.coder_workspace.me.name}-podman"
 
   devices {
@@ -695,7 +695,7 @@ resource "docker_container" "PinP" {
   security_opts = [
     "label:disable",
     "seccomp=unconfined",
-    "systempaths=unconfined", 
+    # "systempaths=unconfined", 
   ]
 
   capabilities {
