@@ -41,16 +41,26 @@ mkdir -p /etc/containers
 cat > "/etc/containers/containers.conf" <<CONF
 [engine]
 compose_warning_logs = false
+cgroup_manager = "cgroupfs"
+events_logger="file"
+runtime="crun"
 
 [containers]
-netns = "host"
 net = "host"
+netns="host"
+userns="host"
+ipcns="host"
+utsns="host"
+cgroupns="host"
+cgroups="disabled"
+log_driver = "k8s-file"
 seccomp_profile = "unconfined"
 add_capabilities = ["SYS_PTRACE", "SYS_ADMIN"]
 volumes = [
   "${CERT_DIR}/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro",
   "${CERT_DIR}/ca-bundle.crt:/etc/pki/tls/certs/ca-bundle.crt:ro",
   "${CERT_DIR}/ca-bundle.crt:/etc/ssl/cert.pem:ro",
+  "/proc:/proc"
 ]
 env = [
   "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt",
@@ -66,6 +76,7 @@ env = [
   "all_proxy=${all_proxy}",
   "no_proxy=${no_proxy}"
 ]
+default_sysctls = []
 CONF
 
 # cat > /etc/containers/storage.conf <<EOF
