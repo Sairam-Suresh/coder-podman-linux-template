@@ -458,6 +458,8 @@ resource "docker_container" "workspace" {
   entrypoint = ["bash", "-c"]
   command = [<<-EOT
     set -e
+    echo "Aligning home directory permissions..."
+    sudo chown -R 1000:1000 "$HOME" || true
 
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
@@ -626,7 +628,6 @@ resource "docker_container" "PinP" {
     container_path = "/dev/fuse"
     permissions    = "rwm"
   }
-
 
   security_opts = [
     "label:disable",
