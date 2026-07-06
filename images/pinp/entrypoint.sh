@@ -35,8 +35,10 @@ if [ -f "$CERT_DIR/root.crt" ] || [ -f "$CERT_DIR/intermed.crt" ]; then
   cat "$CERT_DIR/root.crt" "$CERT_DIR/intermed.crt" > "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
 fi
 
+mkdir -p /etc/containers
+
 # Write containers.conf
-cat > "$HOME_DIR/.config/containers/containers.conf" <<CONF
+cat > "/etc/containers/containers.conf" <<CONF
 [engine]
 compose_warning_logs = false
 
@@ -66,21 +68,20 @@ env = [
 ]
 CONF
 
-mkdir -p /etc/containers
-cat > /etc/containers/storage.conf <<EOF
-[storage]
-driver = "overlay"
-runroot = "/run/containers/storage"
-graphroot = "/var/lib/containers/storage"
+# cat > /etc/containers/storage.conf <<EOF
+# [storage]
+# driver = "overlay"
+# runroot = "/run/containers/storage"
+# graphroot = "/var/lib/containers/storage"
 
-[storage.options]
-mount_program = "/usr/bin/fuse-overlayfs"
-ignore_chown_errors = "true"
+# [storage.options]
+# mount_program = "/usr/bin/fuse-overlayfs"
+# ignore_chown_errors = "true"
 
-[storage.options.overlay]
-ignore_chown_errors = "true"
-mountopt = "nodev,metacopy=off,index=off"
-EOF
+# [storage.options.overlay]
+# ignore_chown_errors = "true"
+# mountopt = "nodev,metacopy=off,index=off"
+# EOF
 
 # Initialize and expose socket
 SOCKET_PATH="/tmp/podman/podman.sock"
