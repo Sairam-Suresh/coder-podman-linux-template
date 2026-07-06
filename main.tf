@@ -9,6 +9,18 @@ terraform {
   }
 }
 
+variable "proxy_ip" {
+  type        = string
+  description = "The IP address of the proxy server."
+  default     = "192.168.18.9"
+}
+
+variable "proxy_port" {
+  type        = string
+  description = "The port of the proxy server."
+  default     = "1055"
+}
+
 locals {
   username = data.coder_workspace_owner.me.name
   # Unique name for containers and resources
@@ -408,16 +420,34 @@ resource "docker_image" "PinP" {
     tag        = ["pinp:local"]
     use_legacy_builder = true
     build_args = {
-      http_proxy: "http://192.168.18.9:1055"
-      https_proxy: "http://192.168.18.9:1055"
-      HTTPS_PROXY: "http://192.168.18.9:1055"
-      HTTP_PROXY: "http://192.168.18.9:1055"
+      http_proxy: "http://${var.proxy_ip}:${var.proxy_port}"
+      https_proxy: "http://${var.proxy_ip}:${var.proxy_port}"
+      HTTPS_PROXY: "http://${var.proxy_ip}:${var.proxy_port}"
+      HTTP_PROXY: "http://${var.proxy_ip}:${var.proxy_port}"
     }
   }
 
   triggers = {
     dockerfile_hash  = filesha256("${path.module}/images/pinp/Dockerfile")
     entrypoint_hash  = filesha256("${path.module}/images/pinp/entrypoint.sh")
+  }
+}
+
+# Building the new Sidecar Firewall Container
+resource "docker_image" "firewall" {
+  name         = "coder-firewall:local"
+  keep_locally = true
+
+  build {
+    context            = "${path.module}/images/firewall"
+    dockerfile         = "Dockerfile"
+    tag                = ["coder-firewall:local"]
+    use_legacy_builder = true
+  }
+
+  triggers = {
+    dockerfile_hash = filesha256("${path.module}/images/firewall/Dockerfile")
+    entrypoint_hash = filesha256("${path.module}/images/firewall/entrypoint.sh")
   }
 }
 
@@ -443,14 +473,45 @@ resource "docker_image" "workspace_desktop" {
   keep_locally  = true
 }
 
+# The Sidecar Firewall Container (owns the pasta network stack)
+resource "docker_container" "firewall" {
+  count = data.coder_workspace.me.start_count
+  image = docker_image.firewall.image_id
+  name  = "${local.resource_name}-firewall"
+
+  # Uses Pasta networking backend
+  network_mode = "pasta"
+
+  # Request NET_ADMIN capability to load nftables rules inside its netns
+  capabilities {
+    add = ["NET_ADMIN"]
+  }
+
+  env = [
+    "PROXY_IP=${var.proxy_ip}",
+    "PROXY_PORT=${var.proxy_port}"
+  ]
+
+  restart = "unless-stopped"
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+}
+
 resource "docker_container" "workspace" {
   count = data.coder_workspace.me.start_count
   image = local.container_image
   name = local.resource_name
   hostname = "${data.coder_workspace.me.name}"
 
-  # Use Pasta networking backend
-  network_mode = "pasta"
+  # Connect to the Firewall's network namespace
+  network_mode = "container:${docker_container.firewall[count.index].name}"
 
   userns_mode = "keep-id:uid=1000,gid=1000"
   user = "1000:1000"
@@ -464,7 +525,7 @@ resource "docker_container" "workspace" {
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
     echo "Waiting for http://healthcheck.service.internal/ to return HTTP 200..."
-    until curl --socks5-hostname 192.168.18.9:1055 -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
+    until curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
       echo "Waiting for http://healthcheck.service.internal/ to return 200..."
       sleep 1
     done
@@ -478,15 +539,15 @@ resource "docker_container" "workspace" {
     CERT_DIR="$HOME/.local/share/ca-certificates"
     mkdir -p "$CERT_DIR"
     
-    # Download root certificate (using SOCKS5 proxy via curl)
-    if curl --socks5-hostname 192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
+    # Download root certificate
+    if curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
       echo "Successfully downloaded root certificate"
     else
       echo "Warning: Failed to download root certificate"
     fi
     
     # Download intermediate certificate
-    if curl --socks5-hostname 192.168.18.9:1055 -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
+    if curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
       echo "Successfully downloaded intermediate certificate"
     else
       echo "Warning: Failed to download intermediate certificate"
@@ -562,10 +623,10 @@ YAML
   
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
-    "HTTPS_PROXY=http://192.168.18.9:1055/",
-    "HTTP_PROXY=http://192.168.18.9:1055/",
-    "http_proxy=http://192.168.18.9:1055/",
-    "https_proxy=http://192.168.18.9:1055/",
+    "HTTPS_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
+    "HTTP_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
+    "http_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
+    "https_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
     "NO_PROXY=localhost,127.0.0.1,::1",
     "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock",
     "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock",
@@ -595,6 +656,8 @@ YAML
 
   restart = "unless-stopped"
 
+  depends_on = [docker_container.firewall]
+
   labels {
     label = "coder.owner"
     value = data.coder_workspace_owner.me.name
@@ -620,10 +683,8 @@ resource "docker_container" "PinP" {
   name  = "${local.resource_name}-podman"
 
   userns_mode  = "host"
-
-  privileged = false
-  
-  hostname = "${data.coder_workspace.me.name}-podman"
+  privileged   = false
+  hostname     = "${data.coder_workspace.me.name}-podman"
 
   devices {
     host_path      = "/dev/fuse"
@@ -641,17 +702,21 @@ resource "docker_container" "PinP" {
     add = ["SYS_ADMIN", "SYS_PTRACE", "MKNOD"]
   }
 
-  network_mode = "container:${docker_container.workspace[count.index].name}"
+  # Share the firewall container network namespace too
+  network_mode = "container:${docker_container.firewall[count.index].name}"
 
   env = [
-    "HTTPS_PROXY=http://192.168.18.9:1055/",
-    "HTTP_PROXY=http://192.168.18.9:1055/",
-    "http_proxy=http://192.168.18.9:1055/",
-    "https_proxy=http://192.168.18.9:1055/",
+    "HTTPS_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
+    "HTTP_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
+    "http_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
+    "https_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
     "NO_PROXY=localhost,127.0.0.1,::1",
   ]
 
-  depends_on = [docker_container.workspace]
+  depends_on = [
+    docker_container.workspace,
+    docker_container.firewall
+  ]
 
   restart = "unless-stopped"
 
