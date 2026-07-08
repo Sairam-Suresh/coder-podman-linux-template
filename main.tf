@@ -189,7 +189,7 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "CPU Usage"
     key          = "0_cpu_usage"
-    script       = "which coder"
+    script       = "sudo /tmp/coder.*/coder stat cpu"
     interval     = 10
     timeout      = 1
   }
@@ -197,7 +197,7 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "RAM Usage"
     key          = "1_ram_usage"
-    script       = "sudo PATH=$PATH coder stat mem"
+    script       = "sudo /tmp/coder.*/coder stat mem"
     interval     = 10
     timeout      = 1
   }
