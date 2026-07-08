@@ -189,7 +189,7 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "CPU Usage"
     key          = "0_cpu_usage"
-    script       = "sudo PATH=$PATH coder stat cpu"
+    script       = "which coder"
     interval     = 10
     timeout      = 1
   }
