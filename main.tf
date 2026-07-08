@@ -500,7 +500,7 @@ resource "docker_container" "workspace" {
 
   # Scale privilege configuration safely only when local nested containers are active
   privileged  = data.coder_parameter.enable_devcontainer.value == "true" ? true : false
-  userns_mode = data.coder_parameter.enable_devcontainer.value == "true" ? "host" : "keep-id:uid=1000,gid=1000"
+  userns_mode = "keep-id:uid=1000,gid=1000"
   user        = "1000:1000"
 
   security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
@@ -599,7 +599,7 @@ resource "docker_container" "workspace" {
     # Trigger local rootful-in-rootless Podman engine socket activation if the platform supports it
     if [ -f "/usr/local/bin/init-local-podman.sh" ]; then
       echo "Local Podman helper script discovered. Starting system engine..."
-      /usr/local/bin/init-local-podman.sh
+      sudo /usr/local/bin/init-local-podman.sh
       
       export DOCKER_HOST="unix:///var/run/docker.sock"
     fi
