@@ -189,7 +189,7 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "CPU Usage"
     key          = "0_cpu_usage"
-    script       = "coder stat cpu"
+    script       = "sudo coder stat cpu"
     interval     = 10
     timeout      = 1
   }
@@ -197,7 +197,7 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "RAM Usage"
     key          = "1_ram_usage"
-    script       = "coder stat mem"
+    script       = "sudo coder stat mem"
     interval     = 10
     timeout      = 1
   }
@@ -518,11 +518,6 @@ resource "docker_container" "workspace" {
     set -e
     echo "Aligning home directory permissions..."
     sudo chown -R 1000:1000 "$HOME" || true
-
-    if [ -d /sys/fs/cgroup ]; then
-      echo "Aligning cgroup read permissions for metric statistics..."
-      sudo chmod -R a+r /sys/fs/cgroup 2>/dev/null || true
-    fi
 
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
