@@ -519,6 +519,11 @@ resource "docker_container" "workspace" {
     echo "Aligning home directory permissions..."
     sudo chown -R 1000:1000 "$HOME" || true
 
+    if [ -d /sys/fs/cgroup ]; then
+      echo "Aligning cgroup read permissions for metric statistics..."
+      sudo chmod -R a+r /sys/fs/cgroup 2>/dev/null || true
+    fi
+
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
     echo "Waiting for http://healthcheck.service.internal/ to return HTTP 200..."
