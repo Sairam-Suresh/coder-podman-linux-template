@@ -23,18 +23,31 @@ variable "proxy_port" {
 
 locals {
   username = data.coder_workspace_owner.me.name
+
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
-  
+
   # Calculate the working directory based on git clone settings
   folder_name = data.coder_parameter.enable_git_clone.value == "true" ? replace(basename(try(data.coder_parameter.repo_url[0].value, "")), "/\\.git$/", "") : try(data.coder_parameter.manual_folder_name[0].value, "")
   workdir     = "/home/coder/${local.folder_name}"
-  
+
   # Whether GPU device mounts should be enabled (true when install_de is selected)
   enable_gpu = data.coder_parameter.install_de.value == "true" ? true : (data.coder_parameter.enable_gpu.value == "true")
 
-  # Select container image based on desktop environment parameter
-  container_image = data.coder_parameter.install_de.value == "true" ? docker_image.workspace_desktop[0].image_id : docker_image.workspace.image_id
+  # Select container image dynamically across the 4 workspace combinations
+  container_image = (
+    data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? try(docker_image.workspace_desktop_podman[0].image_id, "") : (
+      data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? try(docker_image.workspace_desktop[0].image_id, "") : (
+        data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? try(docker_image.workspace_podman[0].image_id, "") : docker_image.workspace.image_id
+      )
+    )
+  )
+
+  # Compile standard hardware devices to mount
+  base_devices = local.enable_gpu ? ["/dev/dri/card0", "/dev/dri/renderD128"] : []
+
+  # Include fuse device for nested container execution if local engine is configured
+  device_list = data.coder_parameter.enable_devcontainer.value == "true" ? concat(local.base_devices, ["/dev/fuse"]) : local.base_devices
 }
 
 data "coder_parameter" "install_de" {
@@ -59,7 +72,7 @@ data "coder_parameter" "enable_devcontainer" {
   type         = "bool"
   name         = "enable_devcontainer"
   display_name = "Enable Devcontainers"
-  description  = "Installs Rootless Podman to support Devcontainers."
+  description  = "Installs local Podman engine to support nested execution environments."
   default      = "false"
   mutable      = true
 }
@@ -93,7 +106,7 @@ data "coder_parameter" "manual_folder_name" {
 
 provider "docker" {
   # Defaulting to null if the variable is an empty string lets us have an optional variable without having to set our own default
-  host = "ssh://workspaces@host.containers.internal:22"
+  host     = "ssh://workspaces@host.containers.internal:22"
   ssh_opts = ["-o", "StrictHostKeyChecking=no"]
 }
 
@@ -160,17 +173,12 @@ resource "coder_agent" "main" {
 
   connection_timeout = 120
 
-  # These environment variables allow you to make Git commits right away after creating a
-  # workspace. Note that they take precedence over configuration defined in ~/.gitconfig!
-  # You can remove this block if you'd prefer to configure Git manually or using
-  # dotfiles. (see docs/dotfiles.md)
   env = {
     GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    DOCKER_HOST         = "unix:///run/user/1000/podman/podman.sock"
-    # Certificate-related environment variables (using user-writable location for rootless)
+    DOCKER_HOST         = data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"
     NODE_EXTRA_CA_CERTS = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     SSL_CERT_FILE       = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     REQUESTS_CA_BUNDLE  = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
@@ -221,12 +229,11 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "Load Average (Host)"
     key          = "5_load_host"
-    # get load avg scaled by number of cores
-    script   = <<EOT
+    script       = <<EOT
       echo "`cat /proc/loadavg | awk '{ print $1 }'` `nproc`" | awk '{ printf "%0.2f", $1/$2 }'
     EOT
-    interval = 60
-    timeout  = 1
+    interval     = 60
+    timeout      = 1
   }
 
   metadata {
@@ -240,15 +247,12 @@ resource "coder_agent" "main" {
   }
 }
 
-# See https://registry.coder.com/modules/coder/code-server
 module "code-server" {
   count  = data.coder_workspace.me.start_count
   source = "registry.coder.com/coder/code-server/coder"
 
-  # This ensures that the latest non-breaking version of the module gets downloaded, you can also pin the module version to prevent breaking changes in production.
   version = "~> 1.0"
-
-  folder = local.workdir
+  folder  = local.workdir
 
   extensions = ["catppuccin.catppuccin-vsc-icons", "github.vscode-pull-request-github", "catppuccin.catppuccin-vsc"]
 
@@ -266,19 +270,14 @@ module "code-server" {
   order     = 1
 }
 
-# See https://registry.coder.com/modules/coder/jetbrains-gateway
 module "jetbrains_gateway" {
   count  = data.coder_workspace.me.start_count
   source = "registry.coder.com/coder/jetbrains-gateway/coder"
 
-  # JetBrains IDEs to make available for the user to select
   jetbrains_ides = ["IU", "PS", "WS", "PY", "CL", "GO", "RM", "RD", "RR"]
   default        = "IU"
+  folder         = local.workdir
 
-  # Default folder to open when starting a JetBrains IDE
-  folder = local.workdir
-
-  # This ensures that the latest non-breaking version of the module gets downloaded, you can also pin the module version to prevent breaking changes in production.
   version = "~> 1.0"
 
   agent_id   = coder_agent.main[count.index].id
@@ -336,7 +335,7 @@ module "git-clone" {
   version  = "~> 1.0"
   agent_id = coder_agent.main[0].id
   url      = data.coder_parameter.repo_url[0].value
-  base_dir = "/home/coder" 
+  base_dir = "/home/coder"
 }
 
 module "kasmvnc" {
@@ -358,7 +357,6 @@ module "devcontainers-cli" {
 
 resource "docker_volume" "home_volume" {
   name = "coder-${data.coder_workspace.me.name}-home"
-  # Protect the volume from being deleted due to changes in attributes.
   lifecycle {
     ignore_changes = all
   }
@@ -380,21 +378,6 @@ resource "docker_volume" "home_volume" {
   }
 }
 
-resource "docker_volume" "podman_socket" {
-  name = "coder-${data.coder_workspace.me.name}-podman-socket"
-  lifecycle {
-    ignore_changes = all
-  }
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-}
-
 resource "docker_volume" "podman_storage" {
   name = "coder-${data.coder_workspace.me.name}-podman-storage"
   lifecycle {
@@ -410,30 +393,56 @@ resource "docker_volume" "podman_storage" {
   }
 }
 
-resource "docker_image" "PinP" {
-  name = "pinp:local"
-  keep_locally = true
-
-  build {
-    context    = "${path.module}/images/pinp"
-    dockerfile = "Dockerfile"
-    tag        = ["pinp:local"]
-    use_legacy_builder = true
-    build_args = {
-      http_proxy: "http://${var.proxy_ip}:${var.proxy_port}"
-      https_proxy: "http://${var.proxy_ip}:${var.proxy_port}"
-      HTTPS_PROXY: "http://${var.proxy_ip}:${var.proxy_port}"
-      HTTP_PROXY: "http://${var.proxy_ip}:${var.proxy_port}"
-    }
-  }
-
-  triggers = {
-    dockerfile_hash  = filesha256("${path.module}/images/pinp/Dockerfile")
-    entrypoint_hash  = filesha256("${path.module}/images/pinp/entrypoint.sh")
-  }
+# 1. Base CLI Workspace (Non-Podman)
+data "docker_registry_image" "workspace" {
+  name = "ghcr.io/sairam-suresh/workspace:latest"
 }
 
-# Building the new Sidecar Firewall Container
+resource "docker_image" "workspace" {
+  name          = data.docker_registry_image.workspace.name
+  pull_triggers = [data.docker_registry_image.workspace.sha256_digest]
+  keep_locally  = true
+}
+
+# 2. CLI Workspace with Nested local Podman Engine
+data "docker_registry_image" "workspace_podman" {
+  count = data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? 1 : 0
+  name  = "ghcr.io/sairam-suresh/workspace-podman:latest"
+}
+
+resource "docker_image" "workspace_podman" {
+  count         = data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? 1 : 0
+  name          = data.docker_registry_image.workspace_podman[0].name
+  pull_triggers = [data.docker_registry_image.workspace_podman[0].sha256_digest]
+  keep_locally  = true
+}
+
+# 3. GUI Desktop Workspace (Non-Podman)
+data "docker_registry_image" "workspace_desktop" {
+  count = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? 1 : 0
+  name  = "ghcr.io/sairam-suresh/workspace-desktop:latest"
+}
+
+resource "docker_image" "workspace_desktop" {
+  count         = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? 1 : 0
+  name          = data.docker_registry_image.workspace_desktop[0].name
+  pull_triggers = [data.docker_registry_image.workspace_desktop[0].sha256_digest]
+  keep_locally  = true
+}
+
+# 4. GUI Desktop Workspace with Nested local Podman Engine
+data "docker_registry_image" "workspace_desktop_podman" {
+  count = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? 1 : 0
+  name  = "ghcr.io/sairam-suresh/workspace-desktop-podman:latest"
+}
+
+resource "docker_image" "workspace_desktop_podman" {
+  count         = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? 1 : 0
+  name          = data.docker_registry_image.workspace_desktop_podman[0].name
+  pull_triggers = [data.docker_registry_image.workspace_desktop_podman[0].sha256_digest]
+  keep_locally  = true
+}
+
 resource "docker_image" "firewall" {
   name         = "coder-firewall:local"
   keep_locally = true
@@ -451,38 +460,14 @@ resource "docker_image" "firewall" {
   }
 }
 
-data "docker_registry_image" "workspace" {
-  name = "ghcr.io/sairam-suresh/workspace:latest"
-}
-
-resource "docker_image" "workspace" {
-  name          = data.docker_registry_image.workspace.name
-  pull_triggers = [data.docker_registry_image.workspace.sha256_digest]
-  keep_locally  = true  # Don't delete on workspace destruction
-}
-
-data "docker_registry_image" "workspace_desktop" {
-  count = data.coder_parameter.install_de.value == "true" ? 1 : 0
-  name  = "ghcr.io/sairam-suresh/workspace-desktop:latest"
-}
-
-resource "docker_image" "workspace_desktop" {
-  count         = data.coder_parameter.install_de.value == "true" ? 1 : 0
-  name          = data.docker_registry_image.workspace_desktop[0].name
-  pull_triggers = [data.docker_registry_image.workspace_desktop[0].sha256_digest]
-  keep_locally  = true
-}
-
 # The Sidecar Firewall Container (owns the pasta network stack)
 resource "docker_container" "firewall" {
   count = data.coder_workspace.me.start_count
   image = docker_image.firewall.image_id
   name  = "${local.resource_name}-firewall"
 
-  # Uses Pasta networking backend
   network_mode = "pasta"
 
-  # Request NET_ADMIN capability to load nftables rules inside its netns
   capabilities {
     add = ["NET_ADMIN"]
   }
@@ -505,17 +490,29 @@ resource "docker_container" "firewall" {
 }
 
 resource "docker_container" "workspace" {
-  count = data.coder_workspace.me.start_count
-  image = local.container_image
-  name = local.resource_name
-  hostname = "${data.coder_workspace.me.name}"
+  count    = data.coder_workspace.me.start_count
+  image    = local.container_image
+  name     = local.resource_name
+  hostname = data.coder_workspace.me.name
 
   # Connect to the Firewall's network namespace
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
-  userns_mode = "keep-id:uid=1000,gid=1000"
-  user = "1000:1000"
-  
+  # Scale privilege configuration safely only when local nested containers are active
+  privileged  = data.coder_parameter.enable_devcontainer.value == "true" ? true : false
+  userns_mode = data.coder_parameter.enable_devcontainer.value == "true" ? "host" : "keep-id:uid=1000,gid=1000"
+  user        = "1000:1000"
+
+  security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
+    "label:disable",
+    "seccomp=unconfined",
+    "systempaths=unconfined"
+  ] : []
+
+  capabilities {
+    add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_ADMIN", "SYS_PTRACE", "MKNOD"] : []
+  }
+
   entrypoint = ["bash", "-c"]
   command = [<<-EOT
     set -e
@@ -534,29 +531,37 @@ resource "docker_container" "workspace" {
     sudo -E apt update
 
     echo "Downloading homelab certificates..."
-    
+
     # Create user-writable certificate directory
     CERT_DIR="$HOME/.local/share/ca-certificates"
     mkdir -p "$CERT_DIR"
-    
+
     # Download root certificate
     if curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
       echo "Successfully downloaded root certificate"
     else
       echo "Warning: Failed to download root certificate"
     fi
-    
+
     # Download intermediate certificate
     if curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
       echo "Successfully downloaded intermediate certificate"
     else
       echo "Warning: Failed to download intermediate certificate"
     fi
-    
+
     # Create a combined certificate bundle for applications that need a single file
     cat "$CERT_DIR/homelab-root.crt" "$CERT_DIR/homelab-intermed.crt" > "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
 
-    # Also include the system trust store so system CA roots remain trusted.
+    if [ -f "$CERT_DIR/homelab-root.crt" ]; then
+      echo "Importing certificates into Debian system-wide trust store..."
+      sudo mkdir -p /usr/local/share/ca-certificates/homelab
+      sudo cp "$CERT_DIR/homelab-root.crt" /usr/local/share/ca-certificates/homelab/root.crt 2>/dev/null || true
+      sudo cp "$CERT_DIR/homelab-intermed.crt" /usr/local/share/ca-certificates/homelab/intermediate.crt 2>/dev/null || true
+      sudo update-ca-certificates --fresh >/dev/null
+      echo "System trust store rebuilt successfully."
+    fi
+
     appended=0
     system_bundles=( \
       "/etc/ssl/certs/ca-certificates.crt" \
@@ -583,13 +588,21 @@ resource "docker_container" "workspace" {
       done
     fi
 
-    # Export certificate paths for all processes
+    # Export certificate paths for all user processes
     export SSL_CERT_FILE="$CERT_DIR/ca-bundle.crt"
     export REQUESTS_CA_BUNDLE="$CERT_DIR/ca-bundle.crt"
     export CURL_CA_BUNDLE="$CERT_DIR/ca-bundle.crt"
     export NODE_EXTRA_CA_CERTS="$CERT_DIR/ca-bundle.crt"
-    
+
     echo "Certificates configured at $CERT_DIR/ca-bundle.crt"
+
+    # Trigger local rootful-in-rootless Podman engine socket activation if the platform supports it
+    if [ -f "/usr/local/bin/init-local-podman.sh" ]; then
+      echo "Local Podman helper script discovered. Starting system engine..."
+      /usr/local/bin/init-local-podman.sh
+      
+      export DOCKER_HOST="unix:///var/run/docker.sock"
+    fi
 
     # If desktop environment is enabled, write KasmVNC config to the user's home config
     if [ "$${INSTALL_DE}" = "true" ]; then
@@ -620,7 +633,7 @@ YAML
     exec bash -c '${coder_agent.main[count.index].init_script}'
   EOT
   ]
-  
+
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
     "HTTPS_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
@@ -628,25 +641,29 @@ YAML
     "http_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
     "https_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
     "NO_PROXY=localhost,127.0.0.1,::1",
-    "DOCKER_HOST=unix:///run/user/1000/podman/podman.sock",
-    "CONTAINER_HOST=unix:///run/user/1000/podman/podman.sock",
+    "DOCKER_HOST=${data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"}",
+    "CONTAINER_HOST=${data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"}",
     "INSTALL_DE=${data.coder_parameter.install_de.value}"
   ]
-  
+
   volumes {
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
     selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
 
-  volumes {
-    container_path = "/run/user/1000/podman"
-    volume_name    = docker_volume.podman_socket.name
-    selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
+
+  dynamic "volumes" {
+    for_each = data.coder_parameter.enable_devcontainer.value == "true" ? [1] : []
+    content {
+      container_path = "/var/lib/containers"
+      volume_name    = docker_volume.podman_storage.name
+      selinux_relabel = "z"
+    }
   }
 
   dynamic "devices" {
-    for_each = local.enable_gpu ? ["/dev/dri/card0", "/dev/dri/renderD128"] : []
+    for_each = local.device_list
     content {
       host_path      = devices.value
       container_path = devices.value
@@ -676,89 +693,18 @@ YAML
   }
 }
 
-# The optional PinP Podman Container which will enable Devcontainer support among others
-resource "docker_container" "PinP" {
-  count = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
-  image = docker_image.PinP.image_id
-  name  = "${local.resource_name}-podman"
-
-  userns_mode  = "host"
-  privileged   = true
-  hostname     = "${data.coder_workspace.me.name}-podman"
-
-  devices {
-    host_path      = "/dev/fuse"
-    container_path = "/dev/fuse"
-    permissions    = "rwm"
-  }
-
-  security_opts = [
-    "label:disable",
-    "seccomp=unconfined",
-    "systempaths=unconfined", 
-  ]
-
-  capabilities {
-    add = ["SYS_ADMIN", "SYS_PTRACE", "MKNOD"]
-  }
-
-  # Share the firewall container network namespace too
-  network_mode = "container:${docker_container.firewall[count.index].name}"
-
-  env = [
-    "HTTPS_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
-    "HTTP_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
-    "http_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
-    "https_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
-    "NO_PROXY=localhost,127.0.0.1,::1",
-  ]
-
-  depends_on = [
-    docker_container.workspace,
-    docker_container.firewall
-  ]
-
-  restart = "unless-stopped"
-
-  volumes {
-    container_path = "/home/coder"
-    volume_name    = docker_volume.home_volume.name
-    selinux_relabel = "z"
-  }
-
-  volumes {
-    container_path = "/var/lib/containers"
-    volume_name    = docker_volume.podman_storage.name
-    selinux_relabel = "z"
-  }
-
-  volumes {
-    container_path = "/tmp/podman/"
-    volume_name    = docker_volume.podman_socket.name
-    selinux_relabel = "z"
-  }
-  
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-}
 
 resource "coder_devcontainer" "devcontainer" {
-  count = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
-  agent_id = coder_agent.main[count.index].id
+  count            = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
+  agent_id         = coder_agent.main[count.index].id
   workspace_folder = local.workdir
 }
 
 module "code-server-subagent" {
-  count  = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? 1 : 0
-  source = "registry.coder.com/coder/code-server/coder"
-  version = "~> 1.0"
-  folder = "/workspaces/${local.folder_name}"
+  count      = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? 1 : 0
+  source     = "registry.coder.com/coder/code-server/coder"
+  version    = "~> 1.0"
+  folder     = "/workspaces/${local.folder_name}"
   extensions = ["catppuccin.catppuccin-vsc-icons", "github.vscode-pull-request-github", "catppuccin.catppuccin-vsc"]
 
   open_in = "tab"
