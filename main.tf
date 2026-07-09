@@ -499,7 +499,7 @@ resource "docker_container" "workspace" {
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
   # Scale privilege configuration safely only when local nested containers are active
-  privileged  = false
+  privileged  = true
   userns_mode = "host"
   user        = "0:0"
 
