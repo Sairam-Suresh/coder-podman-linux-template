@@ -500,8 +500,8 @@ resource "docker_container" "workspace" {
 
   # Scale privilege configuration safely only when local nested containers are active
   privileged  = false
-  userns_mode = "host"  # <--- CHANGED: Container UID 0 maps directly to your host user
-  user        = "0:0"   # <--- CHANGED: Start entrypoint as container root
+  userns_mode = "host"
+  user        = "0:0"
 
   security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
     "label:disable",
@@ -558,7 +558,7 @@ resource "docker_container" "workspace" {
       mkdir -p /usr/local/share/ca-certificates/homelab
       cp "$CERT_DIR/homelab-root.crt" /usr/local/share/ca-certificates/homelab/root.crt 2>/dev/null || true
       cp "$CERT_DIR/homelab-intermed.crt" /usr/local/share/ca-certificates/homelab/intermediate.crt 2>/dev/null || true
-      update-ca-certificates --fresh >/dev/null
+      sudo update-ca-certificates --fresh >/dev/null
       echo "System trust store rebuilt successfully."
     fi
 
