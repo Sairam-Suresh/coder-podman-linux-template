@@ -636,7 +636,7 @@ YAML
 
     # Drop down to the coder user while preserving the environment variables we've built
     echo "Dropping privileges to coder user..."
-    exec runuser -m -u coder -- bash -c '${coder_agent.main[count.index].init_script}'
+    exec /usr/sbin/runuser -m -u coder -- bash -c '${coder_agent.main[count.index].init_script}'
   EOT
   ]
 
