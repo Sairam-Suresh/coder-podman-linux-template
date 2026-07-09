@@ -558,7 +558,7 @@ resource "docker_container" "workspace" {
       mkdir -p /usr/local/share/ca-certificates/homelab
       cp "$CERT_DIR/homelab-root.crt" /usr/local/share/ca-certificates/homelab/root.crt 2>/dev/null || true
       cp "$CERT_DIR/homelab-intermed.crt" /usr/local/share/ca-certificates/homelab/intermediate.crt 2>/dev/null || true
-      sudo update-ca-certificates --fresh >/dev/null
+      /usr/sbin/update-ca-certificates --fresh >/dev/null
       echo "System trust store rebuilt successfully."
     fi
 
