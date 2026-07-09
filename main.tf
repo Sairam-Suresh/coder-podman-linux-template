@@ -599,7 +599,7 @@ resource "docker_container" "workspace" {
     # Trigger local rootful-in-rootless Podman engine socket activation if the platform supports it
     if [ -f "/usr/local/bin/init-local-podman.sh" ]; then
       echo "Local Podman helper script discovered. Starting system engine..."
-      /usr/local/bin/init-local-podman.sh
+      sudo /usr/local/bin/init-local-podman.sh
       
       export DOCKER_HOST="unix:///var/run/docker.sock"
     fi
