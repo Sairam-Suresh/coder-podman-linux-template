@@ -500,7 +500,7 @@ resource "docker_container" "workspace" {
 
   # Scale privilege configuration safely only when local nested containers are active
   privileged  = data.coder_parameter.enable_devcontainer.value == "true" ? true : false
-  userns_mode = data.coder_parameter.enable_devcontainer.value == "true" ? "host" : "keep-id:uid=1000,gid=1000"
+  userns_mode = "keep-id:uid=1000,gid=1000"
   user        = "1000:1000"
 
   security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
