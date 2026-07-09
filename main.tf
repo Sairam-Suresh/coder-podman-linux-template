@@ -499,9 +499,9 @@ resource "docker_container" "workspace" {
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
   # Scale privilege configuration safely only when local nested containers are active
-  # privileged  = data.coder_parameter.enable_devcontainer.value == "true" ? true : false
-  userns_mode = "keep-id:uid=1000,gid=1000"
-  user        = "1000:1000"
+  privileged  = false
+  userns_mode = "host"  # <--- CHANGED: Container UID 0 maps directly to your host user
+  user        = "0:0"   # <--- CHANGED: Start entrypoint as container root
 
   security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
     "label:disable",
@@ -517,7 +517,7 @@ resource "docker_container" "workspace" {
   command = [<<-EOT
     set -e
     echo "Aligning home directory permissions..."
-    sudo chown -R 1000:1000 "$HOME" || true
+    chown -R 1000:1000 "$HOME" || true
 
     # Wait until the homelab endpoint responds with HTTP 200 via the
     # Tailscale SOCKS5 proxy. Continue only after it returns 200.
@@ -528,7 +528,7 @@ resource "docker_container" "workspace" {
     done
     echo "http://healthcheck.service.internal/ returned 200; continuing."
 
-    sudo -E apt update
+    apt update
 
     echo "Downloading homelab certificates..."
 
@@ -555,10 +555,10 @@ resource "docker_container" "workspace" {
 
     if [ -f "$CERT_DIR/homelab-root.crt" ]; then
       echo "Importing certificates into Debian system-wide trust store..."
-      sudo mkdir -p /usr/local/share/ca-certificates/homelab
-      sudo cp "$CERT_DIR/homelab-root.crt" /usr/local/share/ca-certificates/homelab/root.crt 2>/dev/null || true
-      sudo cp "$CERT_DIR/homelab-intermed.crt" /usr/local/share/ca-certificates/homelab/intermediate.crt 2>/dev/null || true
-      sudo update-ca-certificates --fresh >/dev/null
+      mkdir -p /usr/local/share/ca-certificates/homelab
+      cp "$CERT_DIR/homelab-root.crt" /usr/local/share/ca-certificates/homelab/root.crt 2>/dev/null || true
+      cp "$CERT_DIR/homelab-intermed.crt" /usr/local/share/ca-certificates/homelab/intermediate.crt 2>/dev/null || true
+      update-ca-certificates --fresh >/dev/null
       echo "System trust store rebuilt successfully."
     fi
 
@@ -598,6 +598,9 @@ resource "docker_container" "workspace" {
 
     # Trigger local rootful-in-rootless Podman engine socket activation if the platform supports it
     if [ -f "/usr/local/bin/init-local-podman.sh" ]; then
+      echo "Aligning internal podman storage permissions..."
+      chown -R 0:0 /var/lib/containers || true  # Direct root execution
+
       echo "Local Podman helper script discovered. Starting system engine..."
       /usr/local/bin/init-local-podman.sh
       
@@ -625,12 +628,15 @@ desktop:
     hw3d: true
     drinode: /dev/dri/renderD128
 YAML
+      chown -R 1000:1000 "$HOME/.vnc" || true
     fi
 
     export PATH="$HOME/.local/bin:$PATH"
+    chown -R 1000:1000 "$HOME" || true
 
-    # Now start the Coder agent (which will connect and then run startup_script)
-    exec bash -c '${coder_agent.main[count.index].init_script}'
+    # Drop down to the coder user while preserving the environment variables we've built
+    echo "Dropping privileges to coder user..."
+    exec runuser -m -u coder -- bash -c '${coder_agent.main[count.index].init_script}'
   EOT
   ]
 
@@ -651,7 +657,6 @@ YAML
     volume_name    = docker_volume.home_volume.name
     selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
-
 
   dynamic "volumes" {
     for_each = data.coder_parameter.enable_devcontainer.value == "true" ? [1] : []
