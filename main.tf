@@ -162,27 +162,6 @@ resource "coder_agent" "main" {
     if [ "${data.coder_parameter.enable_git_clone.value}" = "false" ]; then
       mkdir -p ${local.workdir}
     fi
-
-    (
-      echo "[Coder Agent] Starting background permissions alignment check..."
-      for i in {1..120}; do
-        if [ -d "${local.workdir}" ]; then
-          # Settle down for 3 seconds to let active cloning complete writing
-          sleep 3
-          echo "[Coder Agent] Target workspace found at ${local.workdir}. Restoring clean POSIX boundaries..."
-          
-          # Remove execute permission from general files to make them Git-safe (666)
-          find "${local.workdir}" -path '*/.git' -prune -o -type f -exec chmod 666 {} + || true
-          
-          # Make directories fully accessible and traversable (777)
-          find "${local.workdir}" -path '*/.git' -prune -o -type d -exec chmod 777 {} + || true
-          
-          echo "[Coder Agent] Permission alignments finalized successfully."
-          break
-        fi
-        sleep 1
-      done
-    ) &
   EOT
 
   connection_timeout = 120
