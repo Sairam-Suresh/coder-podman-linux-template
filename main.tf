@@ -34,6 +34,9 @@ locals {
   # Whether GPU device mounts should be enabled (true when install_de is selected)
   enable_gpu = data.coder_parameter.install_de.value == "true" ? true : (data.coder_parameter.enable_gpu.value == "true")
 
+  # Whether hardware virtualization (KVM) should be enabled
+  enable_kvm = data.coder_parameter.enable_kvm.value == "true"
+
   # Select container image dynamically across the 4 workspace combinations
   container_image = (
     data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? try(docker_image.workspace_desktop_podman[0].image_id, "") : (
@@ -44,10 +47,12 @@ locals {
   )
 
   # Compile standard hardware devices to mount
-  base_devices = local.enable_gpu ? ["/dev/dri/card0", "/dev/dri/renderD128"] : []
+  gpu_devices  = local.enable_gpu ? ["/dev/dri/card0", "/dev/dri/renderD128"] : []
+  kvm_devices  = local.enable_kvm ? ["/dev/kvm"] : []
+  fuse_devices = data.coder_parameter.enable_devcontainer.value == "true" ? ["/dev/fuse"] : []
 
-  # Include fuse device for nested container execution if local engine is configured
-  device_list = data.coder_parameter.enable_devcontainer.value == "true" ? concat(local.base_devices, ["/dev/fuse"]) : local.base_devices
+  # Combine all required devices cleanly
+  device_list = concat(local.gpu_devices, local.kvm_devices, local.fuse_devices)
 }
 
 data "coder_parameter" "install_de" {
@@ -84,6 +89,15 @@ data "coder_parameter" "enable_gpu" {
   description  = "Mount host GPU devices /dev/dri/card0 and /dev/dri/renderD128 into the workspace container for hardware acceleration."
   # Force-enable and make read-only when Desktop Environment is selected
   default      = data.coder_parameter.install_de.value == "true" ? "true" : "false"
+  mutable      = true
+}
+
+data "coder_parameter" "enable_kvm" {
+  type         = "bool"
+  name         = "enable_kvm"
+  display_name = "Hardware Virtualization (KVM)"
+  description  = "Mount host /dev/kvm into the workspace container to support nested hardware-accelerated VMs (QEMU/KVM)."
+  default      = "false"
   mutable      = true
 }
 
@@ -499,8 +513,8 @@ resource "docker_container" "workspace" {
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
   # Scale privilege configuration safely only when local nested containers are active
-  # privileged  = data.coder_parameter.enable_devcontainer.value == "true" ? true : false
-  userns_mode = "keep-id:uid=1000,gid=1000"
+  privileged  = data.coder_parameter.enable_devcontainer.value == "true" ? true : false
+  userns_mode = data.coder_parameter.enable_devcontainer.value == "true" ? "host" : "keep-id:uid=1000,gid=1000"
   user        = "1000:1000"
 
   security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
