@@ -552,7 +552,7 @@ resource "docker_container" "workspace" {
   ] : []
 
   capabilities {
-    add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_ADMIN"] : []
+    add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_ADMIN", "SYS_PTRACE"] : []
   }
 
   entrypoint = ["bash", "-c"]
