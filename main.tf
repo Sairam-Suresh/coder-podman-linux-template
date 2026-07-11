@@ -412,12 +412,20 @@ resource "docker_volume" "podman_storage" {
   }
 }
 
-# Shared static named volume representing the unprivileged Host Podman cache.
-# Placing a static name prevents workspace-specific duplication and ensures shared usage.
+# Workspace-specific, dedicated named volume for unprivileged rootless Podman image caches.
+# Using a workspace-specific naming pattern guarantees separate environments and prevents lock/corruption conflicts.
 resource "docker_volume" "podman_cache" {
-  name = "coder-shared-podman-cache"
+  name = "coder-${data.coder_workspace.me.name}-podman-cache"
   lifecycle {
     ignore_changes = all
+  }
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
   }
 }
 
@@ -713,13 +721,15 @@ YAML
     selinux_relabel = "z"
   }
 
-  # Mount the shared Podman cache named volume as an additional read-only image store
+  # Mount the workspace-specific Podman cache named volume directly into Podman's local rootless storage path
+  # This isolates image cache storage uniquely per workspace while enabling full read-write speed.
   dynamic "volumes" {
     for_each = data.coder_parameter.enable_devcontainer.value == "true" ? [1] : []
     content {
-      volume_name    = docker_volume.podman_cache.name
-      container_path = "/var/lib/shared-host-cache"
-      read_only      = true
+      volume_name     = docker_volume.podman_cache.name
+      container_path  = "/home/coder/.local/share/containers"
+      read_only       = false
+      selinux_relabel = "z"
     }
   }
 
