@@ -665,7 +665,7 @@ YAML
 
   # Mount the shared Nix Store managed by the central nix-daemon container
   volumes {
-    host_path       = "/home/administrator/.homelab/nix/store"
+    volume_name       = "shared_nix_store"
     container_path  = "/nix/store"
     selinux_relabel = "z"
     read_only       = true
@@ -673,7 +673,7 @@ YAML
 
   # Mount the shared Nix state and daemon socket managed by the central nix-daemon container
   volumes {
-    host_path       = "/home/administrator/.homelab/nix/var"
+    volume_name       = "shared_nix_var"
     container_path  = "/nix/var"
     selinux_relabel = "z"
   }
