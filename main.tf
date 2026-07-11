@@ -547,7 +547,6 @@ resource "docker_container" "workspace" {
   # Connect to the Firewall's network namespace
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
-  privileged = true
   userns_mode = "keep-id:uid=1000,gid=1000"
   user        = "1000:1000"
 
