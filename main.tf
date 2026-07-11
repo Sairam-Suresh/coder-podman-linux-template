@@ -201,7 +201,6 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    DOCKER_HOST         = data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"
     NODE_EXTRA_CA_CERTS = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     SSL_CERT_FILE       = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     REQUESTS_CA_BUNDLE  = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
@@ -687,8 +686,6 @@ YAML
     "http_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
     "https_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
     "NO_PROXY=localhost,127.0.0.1,::1",
-    "DOCKER_HOST=${data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"}",
-    "CONTAINER_HOST=${data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"}",
     "INSTALL_DE=${data.coder_parameter.install_de.value}",
     "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket"
   ]
