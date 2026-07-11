@@ -164,11 +164,6 @@ resource "coder_agent" "main" {
     # Prepare user home with default files on first start.
     if [ ! -f ~/.init_done ]; then
       cp -rT /etc/skel ~
-      
-      # Automatically hook direnv into bash sessions
-      echo 'Appending direnv hook to ~/.bashrc...'
-      echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
-      
       touch ~/.init_done
     fi
 
@@ -414,6 +409,15 @@ resource "docker_volume" "podman_storage" {
   labels {
     label = "coder.workspace_id"
     value = data.coder_workspace.me.id
+  }
+}
+
+# Shared static named volume representing the unprivileged Host Podman cache.
+# Placing a static name prevents workspace-specific duplication and ensures shared usage.
+resource "docker_volume" "podman_cache" {
+  name = "coder-shared-podman-cache"
+  lifecycle {
+    ignore_changes = all
   }
 }
 
@@ -706,6 +710,16 @@ YAML
     volume_name       = "shared_nix_var"
     container_path  = "/nix/var"
     selinux_relabel = "z"
+  }
+
+  # Mount the shared Podman cache named volume as an additional read-only image store
+  dynamic "volumes" {
+    for_each = data.coder_parameter.enable_devcontainer.value == "true" ? [1] : []
+    content {
+      volume_name    = docker_volume.podman_cache.name
+      container_path = "/var/lib/shared-host-cache"
+      read_only      = true
+    }
   }
 
   dynamic "volumes" {
