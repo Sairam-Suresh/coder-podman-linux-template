@@ -495,7 +495,7 @@ resource "terraform_data" "nix_daemon_bootstrap" {
       type        = "ssh"
       user        = "workspaces"
       host        = "host.containers.internal"
-      private_key = file("~/.ssh/id_ed25519")
+      private_key = file("/home/coder/.ssh/id_ed25519")
     }
 
     inline = [
