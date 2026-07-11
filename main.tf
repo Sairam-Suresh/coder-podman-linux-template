@@ -489,6 +489,23 @@ resource "docker_container" "firewall" {
   }
 }
 
+resource "terraform_data" "nix_daemon_bootstrap" {
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "workspaces"
+      host        = "host.containers.internal"
+      agent       = true
+    }
+
+    inline = [
+      "podman volume create --ignore shared_nix_store",
+      "podman volume create --ignore shared_nix_var",
+      "podman run -d --name nix-daemon --replace --restart always --privileged -v shared_nix_store:/nix/store:z -v shared_nix_var:/nix/var:z -e NIX_CONFIG='experimental-features = flakes nix-command' docker.io/nixos/nix:latest nix-daemon"
+    ]
+  }
+}
+
 resource "docker_container" "workspace" {
   count    = data.coder_workspace.me.start_count
   image    = local.container_image
@@ -688,7 +705,7 @@ YAML
 
   restart = "unless-stopped"
 
-  depends_on = [docker_container.firewall]
+  depends_on = [docker_container.firewall, terraform_data.nix_daemon_bootstrap]
 
   labels {
     label = "coder.owner"
