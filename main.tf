@@ -556,9 +556,9 @@ resource "docker_container" "workspace" {
     "unmask=all"
   ] : []
 
-  # capabilities {
-  #   add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_ADMIN", "SYS_PTRACE"] : []
-  # }
+  capabilities {
+    add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_ADMIN", "SYS_PTRACE"] : []
+  }
 
   entrypoint = ["bash", "-c"]
   command = [<<-EOT
