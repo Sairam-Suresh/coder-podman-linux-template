@@ -494,7 +494,18 @@ resource "terraform_data" "nix_daemon_bootstrap" {
     command = <<EOT
       ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_store"
       ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_var"
-      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman run -d --name nix-daemon --replace --restart always --privileged -v shared_nix_store:/nix/store:z -v shared_nix_var:/nix/var:z -e NIX_CONFIG='experimental-features = flakes nix-command' docker.io/nixos/nix:latest nix-daemon"
+      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman run -d --name nix-daemon --replace --restart always --privileged \
+        --http-proxy=false \
+        -v shared_nix_store:/nix/store:z \
+        -v shared_nix_var:/nix/var:z \
+        -e NIX_CONFIG='experimental-features = flakes nix-command' \
+        -e HTTP_PROXY= \
+        -e HTTPS_PROXY= \
+        -e http_proxy= \
+        -e https_proxy= \
+        -e ALL_PROXY= \
+        -e all_proxy= \
+        docker.io/nixos/nix:latest nix-daemon"
     EOT
   }
 }
