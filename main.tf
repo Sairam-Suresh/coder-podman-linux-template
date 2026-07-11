@@ -155,6 +155,11 @@ resource "coder_agent" "main" {
     # Prepare user home with default files on first start.
     if [ ! -f ~/.init_done ]; then
       cp -rT /etc/skel ~
+      
+      # Automatically hook direnv into bash sessions
+      echo 'Appending direnv hook to ~/.bashrc...'
+      echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
+      
       touch ~/.init_done
     fi
 
