@@ -490,19 +490,12 @@ resource "docker_container" "firewall" {
 }
 
 resource "terraform_data" "nix_daemon_bootstrap" {
-  provisioner "remote-exec" {
-    connection {
-      type        = "ssh"
-      user        = "workspaces"
-      host        = "host.containers.internal"
-      private_key = file("/home/coder/.ssh/id_ed25519")
-    }
-
-    inline = [
-      "podman volume create --ignore shared_nix_store",
-      "podman volume create --ignore shared_nix_var",
-      "podman run -d --name nix-daemon --replace --restart always --privileged -v shared_nix_store:/nix/store:z -v shared_nix_var:/nix/var:z -e NIX_CONFIG='experimental-features = flakes nix-command' docker.io/nixos/nix:latest nix-daemon"
-    ]
+  provisioner "local-exec" {
+    command = <<EOT
+      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_store"
+      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_var"
+      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman run -d --name nix-daemon --replace --restart always --privileged -v shared_nix_store:/nix/store:z -v shared_nix_var:/nix/var:z -e NIX_CONFIG='experimental-features = flakes nix-command' docker.io/nixos/nix:latest nix-daemon"
+    EOT
   }
 }
 
