@@ -553,6 +553,7 @@ resource "docker_container" "workspace" {
   security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
     "label:disable",
     "seccomp=unconfined",
+    "systempaths=unconfined"
   ] : []
 
   capabilities {
