@@ -82,6 +82,15 @@ data "coder_parameter" "enable_devcontainer" {
   mutable      = true
 }
 
+data "coder_parameter" "trusted" {
+  type         = "bool"
+  name         = "trusted"
+  display_name = "Trusted?"
+  description  = "Mark this workspace directory as trusted to automatically authorize direnv executions."
+  default      = "false"
+  mutable      = true
+}
+
 data "coder_parameter" "enable_gpu" {
   type         = "bool"
   name         = "enable_gpu"
@@ -166,6 +175,22 @@ resource "coder_agent" "main" {
     # Create workspace folder if not using git clone
     if [ "${data.coder_parameter.enable_git_clone.value}" = "false" ]; then
       mkdir -p ${local.workdir}
+    fi
+
+    # Automatically allow direnv if the workspace is marked as trusted
+    if [ "${data.coder_parameter.trusted.value}" = "true" ]; then
+      echo "Workspace is trusted. Waiting for .envrc to authorize direnv..."
+      (
+        # Wait up to 30 seconds for the .envrc to appear (handles asynchronous git cloning)
+        for i in {1..30}; do
+          if [ -f "${local.workdir}/.envrc" ]; then
+            echo "Found .envrc, running direnv allow..."
+            direnv allow "${local.workdir}"
+            break
+          fi
+          sleep 1
+        done
+      ) &
     fi
   EOT
 
