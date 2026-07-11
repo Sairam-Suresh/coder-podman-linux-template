@@ -551,9 +551,9 @@ resource "docker_container" "workspace" {
     "seccomp=unconfined",
   ] : []
 
-  # capabilities {
-  #   add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_PTRACE"] : []
-  # }
+  capabilities {
+    add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_ADMIN"] : []
+  }
 
   entrypoint = ["bash", "-c"]
   command = [<<-EOT
