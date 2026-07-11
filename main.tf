@@ -543,20 +543,17 @@ resource "docker_container" "workspace" {
   # Connect to the Firewall's network namespace
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
-  # Scale privilege configuration safely only when local nested containers are active
-  privileged  = data.coder_parameter.enable_devcontainer.value == "true" ? true : false
-  userns_mode = data.coder_parameter.enable_devcontainer.value == "true" ? "host" : "keep-id:uid=1000,gid=1000"
+  userns_mode = "keep-id:uid=1000,gid=1000"
   user        = "1000:1000"
 
   security_opts = data.coder_parameter.enable_devcontainer.value == "true" ? [
     "label:disable",
     "seccomp=unconfined",
-    "systempaths=unconfined"
   ] : []
 
-  capabilities {
-    add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_ADMIN", "SYS_PTRACE", "MKNOD"] : []
-  }
+  # capabilities {
+  #   add = data.coder_parameter.enable_devcontainer.value == "true" ? ["SYS_PTRACE"] : []
+  # }
 
   entrypoint = ["bash", "-c"]
   command = [<<-EOT
