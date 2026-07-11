@@ -177,6 +177,8 @@ resource "coder_agent" "main" {
     REQUESTS_CA_BUNDLE  = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     CURL_CA_BUNDLE      = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     DISPLAY             = ":1"
+    # Point the internal agent environment to the host's Nix daemon Unix socket
+    NIX_REMOTE          = "unix:///nix/var/nix/daemon-socket/socket"
   }
 
   metadata {
@@ -636,7 +638,8 @@ YAML
     "NO_PROXY=localhost,127.0.0.1,::1",
     "DOCKER_HOST=${data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"}",
     "CONTAINER_HOST=${data.coder_parameter.enable_devcontainer.value == "true" ? "unix:///var/run/docker.sock" : "unix:///run/user/1000/podman/podman.sock"}",
-    "INSTALL_DE=${data.coder_parameter.install_de.value}"
+    "INSTALL_DE=${data.coder_parameter.install_de.value}",
+    "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket"
   ]
 
   volumes {
@@ -645,6 +648,20 @@ YAML
     selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
 
+  # Mount the shared Nix Store managed by the central nix-daemon container
+  volumes {
+    host_path       = "/home/administrator/.homelab/nix/store"
+    container_path  = "/nix/store"
+    selinux_relabel = "z"
+    read_only       = true
+  }
+
+  # Mount the shared Nix state and daemon socket managed by the central nix-daemon container
+  volumes {
+    host_path       = "/home/administrator/.homelab/nix/var"
+    container_path  = "/nix/var"
+    selinux_relabel = "z"
+  }
 
   dynamic "volumes" {
     for_each = data.coder_parameter.enable_devcontainer.value == "true" ? [1] : []
