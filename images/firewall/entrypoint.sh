@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 
-
 # Generate the active nftables configuration
 cat <<EOF > /etc/nftables.conf
 flush ruleset
@@ -15,7 +14,7 @@ table inet filter {
   }
   chain output {
     type filter hook output priority 0; policy accept;
-    
+
     # 1. Allow loopback traffic
     oif "lo" accept
 
@@ -26,6 +25,10 @@ table inet filter {
     udp dport 53 accept
     tcp dport 53 accept
 
+    # 4. Allow Tailscale VPN traffic (CGNAT IP range and interface)
+    oifname "tailscale*" accept
+    ip daddr 100.64.0.0/10 accept
+
     # 5. Allow established & related return traffic
     ct state established,related accept
 
@@ -34,7 +37,6 @@ table inet filter {
     ip daddr 172.16.0.0/12 drop
     ip daddr 192.168.0.0/16 drop
     ip daddr 169.254.0.0/16 drop
-    ip daddr 100.64.0.0/10 drop
     ip daddr 127.0.0.0/8 drop
     ip daddr 224.0.0.0/4 drop
     ip daddr 240.0.0.0/4 drop
