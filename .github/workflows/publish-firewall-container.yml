@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'images/firewall/**'
+      - '.github/workflows/publish-firewall-container.yml'
   pull_request:
     branches:
       - main
