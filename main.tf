@@ -575,7 +575,7 @@ resource "tailscale_tailnet_key" "workspace_key" {
   reusable      = true
   ephemeral     = false
   preauthorized = true
-  tags          = ["tag:coder-workspaces"]
+  tags          = ["tag:coder-workspace"]
 }
 
 resource "docker_container" "tailscale" {
