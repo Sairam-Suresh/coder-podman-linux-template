@@ -1,9 +1,6 @@
 #!/bin/sh
 set -e
 
-echo "[Firewall] Starting network namespace security agent..."
-echo "[Firewall] Configured target Proxy IP:   ${PROXY_IP}"
-echo "[Firewall] Configured target Proxy Port: ${PROXY_PORT}"
 
 # Generate the active nftables configuration
 cat <<EOF > /etc/nftables.conf
@@ -28,9 +25,6 @@ table inet filter {
     # 3. Allow Domain Name System (DNS) resolution
     udp dport 53 accept
     tcp dport 53 accept
-
-    # 4. Allow egress to our corporate/homelab Proxy server
-    ip daddr ${PROXY_IP} tcp dport ${PROXY_PORT} accept
 
     # 5. Allow established & related return traffic
     ct state established,related accept

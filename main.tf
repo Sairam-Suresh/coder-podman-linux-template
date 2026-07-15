@@ -535,7 +535,7 @@ resource "docker_container" "firewall" {
   network_mode = "pasta"
 
   capabilities {
-    add = ["NET_ADMIN", "NET_RAW"]
+    add = ["NET_ADMIN"]
   }
 
   restart = "unless-stopped"
@@ -587,7 +587,7 @@ resource "docker_container" "tailscale" {
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
   capabilities {
-    add = ["NET_ADMIN", "NET_RAW"]
+    add = ["NET_ADMIN"]
   }
 
   # Standard tun interface registration
