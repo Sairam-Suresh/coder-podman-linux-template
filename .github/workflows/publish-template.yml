@@ -17,6 +17,10 @@ jobs:
         working-directory: ${{ github.workspace }}
     env:
       TEMPLATE_NAME: "podman"
+      # Terraform automatically maps variables starting with TF_VAR_ to your tf variables
+      TF_VAR_tailscale_oauth_client_id: ${{ secrets.WORKSPACE_TS_OAUTH_CLIENT_ID }}
+      TF_VAR_tailscale_oauth_secret: ${{ secrets.WORKSPACE_TS_OAUTH_SECRET }}
+      TF_VAR_tailscale_tailnet: ${{ secrets.WORKSPACE_TS_TAILNET }}
     steps:
       - name: Tailscale
         uses: tailscale/github-action@v4
