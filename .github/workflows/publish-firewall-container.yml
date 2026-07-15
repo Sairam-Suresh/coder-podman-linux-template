@@ -7,12 +7,6 @@ on:
     paths:
       - 'images/firewall/**'
       - '.github/workflows/publish-firewall-container.yml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'images/firewall/**'
-      - '.github/workflows/publish-firewall-container.yml'
   workflow_dispatch: # Allows manual triggers
 
 env:
