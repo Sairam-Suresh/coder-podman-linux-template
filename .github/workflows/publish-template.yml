@@ -6,7 +6,8 @@ on:
       - main
     paths-ignore:
       - 'images/**'
-      - '.github/**'
+      - '.github/workflows/publish-firewall-container.yml'
+      - '.github/workflows/publish-workspace-containers.yml'
   workflow_dispatch:
 
 jobs:
