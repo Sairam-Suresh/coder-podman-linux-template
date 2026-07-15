@@ -6,7 +6,32 @@ terraform {
     docker = {
       source = "kreuzwerker/docker"
     }
+    tailscale = {
+      source  = "tailscale/tailscale"
+      version = "~> 0.17.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
+}
+
+variable "tailscale_oauth_client_id" {
+  type        = string
+  description = "The OAuth Client ID generated from the Tailscale Admin Console (needs 'devices' read/write scope)."
+  sensitive   = true
+}
+
+variable "tailscale_oauth_secret" {
+  type        = string
+  description = "The OAuth Client Secret generated from the Tailscale Admin Console."
+  sensitive   = true
+}
+
+variable "tailscale_tailnet" {
+  type        = string
+  description = "Your Tailscale network name (e.g., 'mycompany.ts.net' or 'orgname')."
 }
 
 variable "proxy_ip" {
@@ -21,11 +46,19 @@ variable "proxy_port" {
   default     = "1055"
 }
 
+provider "tailscale" {
+  oauth_client_id     = var.tailscale_oauth_client_id
+  oauth_client_secret = var.tailscale_oauth_secret
+  tailnet             = var.tailscale_tailnet
+}
+
 locals {
   username = data.coder_workspace_owner.me.name
 
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
+
+  tailscale_hostname = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
 
   # Calculate the working directory based on git clone settings
   folder_name = data.coder_parameter.enable_git_clone.value == "true" ? replace(basename(try(data.coder_parameter.repo_url[0].value, "")), "/\\.git$/", "") : try(data.coder_parameter.manual_folder_name[0].value, "")
@@ -96,7 +129,6 @@ data "coder_parameter" "enable_gpu" {
   name         = "enable_gpu"
   display_name = "Enable GPU Acceleration"
   description  = "Mount host GPU devices /dev/dri/card0 and /dev/dri/renderD128 into the workspace container for hardware acceleration."
-  # Force-enable and make read-only when Desktop Environment is selected
   default      = data.coder_parameter.install_de.value == "true" ? "true" : "false"
   mutable      = true
 }
@@ -429,6 +461,21 @@ resource "docker_volume" "podman_cache" {
   }
 }
 
+resource "docker_volume" "tailscale_state" {
+  name = "coder-${data.coder_workspace.me.name}-tailscale-state"
+  lifecycle {
+    ignore_changes = all
+  }
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+}
+
 # 1. Base CLI Workspace (Non-Podman)
 data "docker_registry_image" "workspace" {
   name = "ghcr.io/sairam-suresh/workspace:latest"
@@ -489,6 +536,17 @@ resource "docker_image" "firewall" {
   keep_locally  = true
 }
 
+# 5. Tailscale Sidecar Image
+data "docker_registry_image" "tailscale" {
+  name = "docker.io/tailscale/tailscale:stable"
+}
+
+resource "docker_image" "tailscale" {
+  name          = data.docker_registry_image.tailscale.name
+  pull_triggers = [data.docker_registry_image.tailscale.sha256_digest]
+  keep_locally  = true
+}
+
 # The Sidecar Firewall Container (owns the pasta network stack)
 resource "docker_container" "firewall" {
   count = data.coder_workspace.me.start_count
@@ -536,6 +594,58 @@ resource "terraform_data" "nix_daemon_bootstrap" {
         -e all_proxy= \
         docker.io/nixos/nix:latest nix-daemon"
     EOT
+  }
+}
+
+resource "tailscale_tailnet_key" "workspace_key" {
+  reusable      = true
+  ephemeral     = false
+  preauthorized = true
+  tags          = ["tag:coder-workspaces"]
+}
+
+resource "docker_container" "tailscale" {
+  count = data.coder_workspace.me.start_count
+  image = docker_image.tailscale.image_id
+  name  = "${local.resource_name}-tailscale"
+
+  # Bind Tailscale directly to the shared firewall pasta network workspace stack
+  network_mode = "container:${docker_container.firewall[count.index].name}"
+
+  capabilities {
+    add = ["NET_ADMIN"]
+  }
+
+  # Standard tun interface registration
+  devices {
+    host_path      = "/dev/net/tun"
+    container_path = "/dev/net/tun"
+    permissions    = "rwm"
+  }
+
+  env = [
+    "TS_AUTHKEY=${tailscale_tailnet_key.workspace_key.key}",
+    "TS_HOSTNAME=${local.tailscale_hostname}",
+    "TS_STATE_DIR=/var/lib/tailscale",
+    "TS_EXTRA_ARGS=--accept-dns=true"
+  ]
+
+  volumes {
+    container_path = "/var/lib/tailscale"
+    volume_name    = docker_volume.tailscale_state.name
+  }
+
+  restart = "unless-stopped"
+
+  depends_on = [docker_container.firewall]
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
   }
 }
 
@@ -746,7 +856,12 @@ YAML
 
   restart = "unless-stopped"
 
-  depends_on = [docker_container.firewall, terraform_data.nix_daemon_bootstrap]
+  # Depend on tailscale sidecar and firewall so network namespaces exist
+  depends_on = [
+    docker_container.firewall,
+    docker_container.tailscale,
+    terraform_data.nix_daemon_bootstrap
+  ]
 
   labels {
     label = "coder.owner"
@@ -765,7 +880,6 @@ YAML
     value = data.coder_workspace.me.name
   }
 }
-
 
 resource "coder_devcontainer" "devcontainer" {
   count            = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? data.coder_workspace.me.start_count : 0
@@ -795,4 +909,88 @@ module "code-server-subagent" {
   subdomain = true
   agent_id  = coder_devcontainer.devcontainer[count.index].subagent_id
   order     = 1
+}
+
+# --- Lifecycle Device Purger (Local Execution on Destroy) ---
+# Triggers on workspace teardown to cleanly unregister the device from your Tailnet.
+resource "null_resource" "tailscale_device_purger" {
+  triggers = {
+    hostname     = local.tailscale_hostname
+    oauth_id     = var.tailscale_oauth_client_id
+    oauth_secret = var.tailscale_oauth_secret
+    tailnet_name = var.tailscale_tailnet
+  }
+
+  lifecycle {
+    create_before_destroy = false
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<EOT
+      python3 -c '
+import urllib.request, urllib.parse, json, sys, base64
+
+client_id = sys.argv[1]
+client_secret = sys.argv[2]
+tailnet = sys.argv[3]
+hostname = sys.argv[4]
+
+# 1. Fetch Tailscale API OAuth Token
+token_url = "https://api.tailscale.com/api/v2/oauth/token"
+data = urllib.parse.urlencode({"grant_type": "client_credentials"}).encode("utf-8")
+req = urllib.request.Request(token_url, data=data)
+auth_str = f"{client_id}:{client_secret}"
+auth_b64 = base64.b64encode(auth_str.encode()).decode()
+req.add_header("Authorization", f"Basic {auth_b64}")
+
+try:
+    with urllib.request.urlopen(req) as response:
+        res = json.loads(response.read().decode())
+        token = res.get("access_token")
+except Exception as e:
+    print(f"Failed to fetch Tailscale OAuth Token: {e}")
+    sys.exit(0)
+
+# 2. Query All Devices in the Tailnet
+devices_url = f"https://api.tailscale.com/api/v2/tailnet/{tailnet}/devices"
+req = urllib.request.Request(devices_url)
+req.add_header("Authorization", f"Bearer {token}")
+try:
+    with urllib.request.urlopen(req) as response:
+        res = json.loads(response.read().decode())
+        devices = res.get("devices", [])
+except Exception as e:
+    print(f"Failed to fetch list of devices: {e}")
+    sys.exit(0)
+
+# 3. Search and Identify Target Device ID
+target_device_id = None
+for dev in devices:
+    curr_hostname = dev.get("hostname", "")
+    curr_name = dev.get("name", "").split(".")[0]
+    if curr_hostname.lower() == hostname.lower() or curr_name.lower() == hostname.lower():
+        target_device_id = dev.get("id")
+        break
+
+if not target_device_id:
+    print(f"Tailscale device with hostname {hostname} was not found (already deleted or did not register).")
+    sys.exit(0)
+
+# 4. Cleanly Delete the Device Node
+print(f"Discovered Tailscale device id: {target_device_id}. Requesting deletion...")
+delete_url = f"https://api.tailscale.com/api/v2/device/{target_device_id}"
+req = urllib.request.Request(delete_url, method="DELETE")
+req.add_header("Authorization", f"Bearer {token}")
+try:
+    with urllib.request.urlopen(req) as response:
+        if response.status in [200, 204]:
+            print("Successfully deleted the workspace device from the Tailscale dashboard!")
+        else:
+            print(f"Warning: Deletion returned unexpected status: {response.status}")
+except Exception as e:
+    print(f"Failed to delete Tailscale device: {e}")
+' "${self.triggers.oauth_id}" "${self.triggers.oauth_secret}" "${self.triggers.tailnet_name}" "${self.triggers.hostname}"
+    EOT
+  }
 }
