@@ -48,6 +48,6 @@ jobs:
           file: ./images/firewall/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/workspace:latest
+            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/coder-workspace-firewall:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
