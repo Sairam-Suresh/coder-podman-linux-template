@@ -535,7 +535,7 @@ resource "docker_container" "firewall" {
   network_mode = "pasta"
 
   capabilities {
-    add = ["NET_ADMIN"]
+    add = ["NET_ADMIN", "NET_RAW"]
   }
 
   restart = "unless-stopped"
@@ -587,7 +587,7 @@ resource "docker_container" "tailscale" {
   network_mode = "container:${docker_container.firewall[count.index].name}"
 
   capabilities {
-    add = ["NET_ADMIN"]
+    add = ["NET_ADMIN", "NET_RAW"]
   }
 
   # Standard tun interface registration
@@ -601,7 +601,7 @@ resource "docker_container" "tailscale" {
     "TS_AUTHKEY=${tailscale_tailnet_key.workspace_key.key}",
     "TS_HOSTNAME=${local.tailscale_hostname}",
     "TS_STATE_DIR=/var/lib/tailscale",
-    "TS_EXTRA_ARGS=--accept-dns=true"
+    "TS_ACCEPT_DNS=true"
   ]
 
   volumes {
