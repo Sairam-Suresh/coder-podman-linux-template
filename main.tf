@@ -514,7 +514,6 @@ data "docker_registry_image" "firewall" {
   name = "ghcr.io/sairam-suresh/coder-workspace-firewall:latest"
 }
 
-
 resource "docker_image" "firewall" {
   name          = data.docker_registry_image.firewall.name
   pull_triggers = [data.docker_registry_image.firewall.sha256_digest]
