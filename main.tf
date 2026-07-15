@@ -521,14 +521,9 @@ resource "docker_image" "firewall" {
 }
 
 # 5. Tailscale Sidecar Image
-data "docker_registry_image" "tailscale" {
-  name = "docker.io/tailscale/tailscale:latest"
-}
-
 resource "docker_image" "tailscale" {
-  name          = data.docker_registry_image.tailscale.name
-  pull_triggers = [data.docker_registry_image.tailscale.sha256_digest]
-  keep_locally  = true
+  name         = "docker.io/tailscale/tailscale:stable"
+  keep_locally = true
 }
 
 # The Sidecar Firewall Container (owns the pasta network stack)
