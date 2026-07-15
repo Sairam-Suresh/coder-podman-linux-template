@@ -523,7 +523,7 @@ resource "docker_image" "firewall" {
 
 # 5. Tailscale Sidecar Image
 data "docker_registry_image" "tailscale" {
-  name = "docker.io/tailscale/tailscale:stable"
+  name = "docker.io/tailscale/tailscale:latest"
 }
 
 resource "docker_image" "tailscale" {
