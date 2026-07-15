@@ -11,6 +11,7 @@ on:
       - main
     paths:
       - 'images/firewall/**'
+      - '.github/workflows/publish-firewall-container.yml'
   workflow_dispatch: # Allows manual triggers
 
 env:
