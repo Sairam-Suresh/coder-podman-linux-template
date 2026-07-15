@@ -479,21 +479,14 @@ resource "docker_image" "workspace_desktop_podman" {
   keep_locally  = true
 }
 
+data "docker_registry_image" "firewall" {
+  name = "ghcr.io/sairam-suresh/coder-workspace-firewall:latest"
+}
+
 resource "docker_image" "firewall" {
-  name         = "coder-firewall:local"
-  keep_locally = true
-
-  build {
-    context            = "${path.module}/images/firewall"
-    dockerfile         = "Dockerfile"
-    tag                = ["coder-firewall:local"]
-    use_legacy_builder = true
-  }
-
-  triggers = {
-    dockerfile_hash = filesha256("${path.module}/images/firewall/Dockerfile")
-    entrypoint_hash = filesha256("${path.module}/images/firewall/entrypoint.sh")
-  }
+  name          = data.docker_registry_image.firewall.name
+  pull_triggers = [data.docker_registry_image.firewall.sha256_digest]
+  keep_locally  = true
 }
 
 # The Sidecar Firewall Container (owns the pasta network stack)

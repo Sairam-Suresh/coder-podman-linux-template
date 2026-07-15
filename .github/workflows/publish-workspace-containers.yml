@@ -1,0 +1,84 @@
+name: Build and Publish Main Workspace Container Images
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'images/workspace/**'
+      - '.github/workflows/publish-workspace-containers.yml'
+  workflow_dispatch: 
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure lowercase owner name
+        id: lower-owner
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push workspace image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./images/workspace/
+          file: ./images/workspace/Dockerfile
+          target: workspace
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/workspace:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push workspace-podman image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./images/workspace/
+          file: ./images/workspace/Dockerfile
+          target: workspace-podman
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/workspace-podman:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push workspace-desktop image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./images/workspace/
+          file: ./images/workspace/Dockerfile
+          target: workspace-desktop
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/workspace-desktop:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push workspace-desktop-podman image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./images/workspace/
+          file: ./images/workspace/Dockerfile
+          target: workspace-desktop-podman
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/workspace-desktop-podman:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
