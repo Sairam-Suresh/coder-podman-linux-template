@@ -164,7 +164,7 @@ RUN mkdir -p /etc/containers && \
     echo -e "[registries.search]\nregistries = ['docker.io', 'quay.io', 'gcr.io']" > /etc/containers/registries.conf && \
     echo -e "[storage]\ndriver = \"overlay\"\nrunroot = \"/run/containers/storage\"\ngraphroot = \"/var/lib/containers/storage\"\n\n[storage.options]\nadditionalimagestores = [\"/var/lib/shared-host-cache\"]\n\n[storage.options.overlay]\nmount_program = \"/usr/bin/fuse-overlayfs\"\nmountopt = \"nodev,fsync=0\"" > /etc/containers/storage.conf
 
-# Write customized default containers.conf for PinP environments with hardcoded absolute paths & proxy servers
+# Write customized default containers.conf for PinP environments with hardcoded absolute paths
 # Crucial Change: Force 'cgroup_manager = "cgroupfs"', 'events_backend = "file"', 'service_timeout = 0', and 'cgroups = "disabled"'.
 # This registers standard configuration drivers but disables cgroups nested handling to run inside unprivileged sandboxes.
 RUN cat <<'EOF' > /etc/containers/containers.conf
@@ -212,15 +212,7 @@ env = [
   "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt",
   "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
   "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
-  "CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
-  "HTTP_PROXY=http://192.168.18.9:1055",
-  "HTTPS_PROXY=http://192.168.18.9:1055",
-  "ALL_PROXY=http://192.168.18.9:1055",
-  "NO_PROXY=localhost,127.0.0.1,192.168.18.9",
-  "http_proxy=http://192.168.18.9:1055",
-  "https_proxy=http://192.168.18.9:1055",
-  "all_proxy=http://192.168.18.9:1055",
-  "no_proxy=localhost,127.0.0.1,192.168.18.9"
+  "CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt"
 ]
 default_sysctls = []
 EOF

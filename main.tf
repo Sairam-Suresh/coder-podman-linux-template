@@ -17,6 +17,7 @@ terraform {
   }
 }
 
+# --- Tailscale Configuration Variables ---
 variable "tailscale_oauth_client_id" {
   type        = string
   description = "The OAuth Client ID generated from the Tailscale Admin Console (needs 'devices' read/write scope)."
@@ -34,22 +35,15 @@ variable "tailscale_tailnet" {
   description = "Your Tailscale network name (e.g., 'mycompany.ts.net' or 'orgname')."
 }
 
-variable "proxy_ip" {
-  type        = string
-  description = "The IP address of the proxy server."
-  default     = "192.168.18.9"
-}
-
-variable "proxy_port" {
-  type        = string
-  description = "The port of the proxy server."
-  default     = "1055"
-}
-
 provider "tailscale" {
   oauth_client_id     = var.tailscale_oauth_client_id
   oauth_client_secret = var.tailscale_oauth_secret
   tailnet             = var.tailscale_tailnet
+}
+
+provider "docker" {
+  host     = "ssh://workspaces@host.containers.internal:22"
+  ssh_opts = ["-o", "StrictHostKeyChecking=no"]
 }
 
 locals {
@@ -58,6 +52,7 @@ locals {
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
 
+  # Standard Tailscale hostname registered in your dashboard
   tailscale_hostname = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
 
   # Calculate the working directory based on git clone settings
@@ -159,12 +154,6 @@ data "coder_parameter" "manual_folder_name" {
   default      = "my-workspace"
 }
 
-provider "docker" {
-  # Defaulting to null if the variable is an empty string lets us have an optional variable without having to set our own default
-  host     = "ssh://workspaces@host.containers.internal:22"
-  ssh_opts = ["-o", "StrictHostKeyChecking=no"]
-}
-
 data "coder_provisioner" "me" {}
 data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
@@ -208,7 +197,6 @@ resource "coder_agent" "main" {
     if [ "${data.coder_parameter.trusted.value}" = "true" ]; then
       echo "Workspace is trusted. Waiting for .envrc to authorize direnv..."
       (
-        # Wait up to 30 seconds for the .envrc to appear (handles asynchronous git cloning)
         for i in {1..30}; do
           if [ -f "${local.workdir}/.envrc" ]; then
             echo "Found .envrc, running direnv allow..."
@@ -228,10 +216,6 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    NODE_EXTRA_CA_CERTS = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
-    SSL_CERT_FILE       = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
-    REQUESTS_CA_BUNDLE  = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
-    CURL_CA_BUNDLE      = "$HOME/.local/share/ca-certificates/ca-bundle.crt"
     DISPLAY             = ":1"
     # Point the internal agent environment to the host's Nix daemon Unix socket
     NIX_REMOTE          = "unix:///nix/var/nix/daemon-socket/socket"
@@ -559,11 +543,6 @@ resource "docker_container" "firewall" {
     add = ["NET_ADMIN"]
   }
 
-  env = [
-    "PROXY_IP=${var.proxy_ip}",
-    "PROXY_PORT=${var.proxy_port}"
-  ]
-
   restart = "unless-stopped"
 
   labels {
@@ -677,15 +656,6 @@ resource "docker_container" "workspace" {
     echo "Aligning home directory permissions..."
     sudo chown -R 1000:1000 "$HOME" || true
 
-    # Wait until the homelab endpoint responds with HTTP 200 via the
-    # Tailscale SOCKS5 proxy. Continue only after it returns 200.
-    echo "Waiting for http://healthcheck.service.internal/ to return HTTP 200..."
-    until curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -sS -I --max-time 5 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' http://healthcheck.service.internal/ 2>/dev/null | head -n1 | grep -qE 'HTTP/[^ ]+ 200'; do
-      echo "Waiting for http://healthcheck.service.internal/ to return 200..."
-      sleep 1
-    done
-    echo "http://healthcheck.service.internal/ returned 200; continuing."
-
     sudo -E apt update
 
     echo "Downloading homelab certificates..."
@@ -694,15 +664,15 @@ resource "docker_container" "workspace" {
     CERT_DIR="$HOME/.local/share/ca-certificates"
     mkdir -p "$CERT_DIR"
 
-    # Download root certificate
-    if curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
+    # Download root certificate directly through Tailscale routes
+    if curl -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
       echo "Successfully downloaded root certificate"
     else
       echo "Warning: Failed to download root certificate"
     fi
 
-    # Download intermediate certificate
-    if curl --socks5-hostname ${var.proxy_ip}:${var.proxy_port} -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
+    # Download intermediate certificate directly through Tailscale routes
+    if curl -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
       echo "Successfully downloaded intermediate certificate"
     else
       echo "Warning: Failed to download intermediate certificate"
@@ -758,8 +728,6 @@ resource "docker_container" "workspace" {
     if [ -f "/usr/local/bin/init-local-podman.sh" ]; then
       echo "Local Podman helper script discovered. Starting system engine..."
       /usr/local/bin/init-local-podman.sh
-      
-      export DOCKER_HOST="unix:///var/run/docker.sock"
     fi
 
     # If desktop environment is enabled, write KasmVNC config to the user's home config
@@ -794,11 +762,6 @@ YAML
 
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
-    "HTTPS_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
-    "HTTP_PROXY=http://${var.proxy_ip}:${var.proxy_port}/",
-    "http_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
-    "https_proxy=http://${var.proxy_ip}:${var.proxy_port}/",
-    "NO_PROXY=localhost,127.0.0.1,::1",
     "INSTALL_DE=${data.coder_parameter.install_de.value}",
     "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket"
   ]
