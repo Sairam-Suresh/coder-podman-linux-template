@@ -49,6 +49,9 @@ provider "docker" {
 locals {
   username = data.coder_workspace_owner.me.name
 
+  workspace_hash_int = parseint(substr(md5(data.coder_workspace.me.id), 0, 7), 16)
+  ts_port = 40000 + (local.workspace_hash_int % 300)
+
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
 
@@ -601,8 +604,16 @@ resource "docker_container" "tailscale" {
     "TS_AUTHKEY=${tailscale_tailnet_key.workspace_key.key}",
     "TS_HOSTNAME=${local.tailscale_hostname}",
     "TS_STATE_DIR=/var/lib/tailscale",
-    "TS_ACCEPT_DNS=true"
+    "TS_ACCEPT_DNS=true",
+    "TS_USERSPACE=false",
+    "TS_TAILSCALED_EXTRA_ARGS=--port=${local.ts_port}"
   ]
+
+  ports {
+    internal = local.ts_port
+    external = local.ts_port
+    protocol = "udp"
+  }
 
   volumes {
     container_path = "/var/lib/tailscale"
