@@ -41,23 +41,13 @@ jobs:
         id: lower-owner
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Extract Metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/workspace:latest
-            type=sha,format=long
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: ./images/firewall
           file: ./images/firewall/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.lower-owner.outputs.owner }}/workspace:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
