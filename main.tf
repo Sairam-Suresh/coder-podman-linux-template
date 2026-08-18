@@ -309,7 +309,7 @@ module "jetbrains_gateway" {
 module "antigravity" {
   count    = data.coder_workspace.me.start_count
   source   = "registry.coder.com/coder/antigravity/coder"
-  version  = "~> 1.0"
+  version  = "~> 1.0.1"
   agent_id = coder_agent.main[count.index].id
   folder   = local.workdir
 
