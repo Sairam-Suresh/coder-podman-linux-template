@@ -482,20 +482,76 @@ resource "docker_image" "workspace_desktop_podman" {
   keep_locally  = true
 }
 
-# 5. Proxy Forwarder Sidecar Image
+# 5. Proxy Forwarder and Firewall Sidecar Image
 resource "docker_image" "proxy" {
-  name         = "docker.io/alpine/socat:latest"
+  name         = "docker.io/library/alpine:3.19"
   keep_locally = true
 }
 
-# The Sidecar Proxy Forwarder Container (owns the pasta network stack)
+# The Sidecar Proxy Forwarder & Firewall Container (owns the pasta network stack)
 resource "docker_container" "proxy" {
   count = data.coder_workspace.me.start_count
   image = docker_image.proxy.image_id
   name  = "${local.resource_name}-proxy"
 
   network_mode = "pasta"
-  command      = ["tcp-listen:${var.proxy_port},fork,reuseaddr", "tcp-connect:${var.proxy_host}:${var.proxy_port}"]
+
+  capabilities {
+    add = ["NET_ADMIN"]
+  }
+
+  entrypoint = ["/bin/sh", "-c"]
+  command = [<<-EOT
+    set -e
+    apk add --no-cache nftables socat
+
+    cat <<EOF > /etc/nftables.conf
+flush ruleset
+
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy accept;
+  }
+  chain forward {
+    type filter hook forward priority 0; policy accept;
+  }
+  chain output {
+    type filter hook output priority 0; policy accept;
+
+    # 1. Allow loopback traffic
+    oif "lo" accept
+
+    # 2. Allow DHCP configuration requests
+    udp dport 67 accept
+
+    # 3. Allow DNS resolution
+    udp dport 53 accept
+    tcp dport 53 accept
+
+    # 4. Allow established & related return traffic
+    ct state established,related accept
+
+    # 5. Explicitly allow outbound traffic to the remote proxy server
+    ip daddr ${var.proxy_host} tcp dport ${var.proxy_port} accept
+
+    # 6. Block internal private networks (LAN egress filter)
+    ip daddr 10.0.0.0/8 drop
+    ip daddr 172.16.0.0/12 drop
+    ip daddr 192.168.0.0/16 drop
+    ip daddr 169.254.0.0/16 drop
+    ip daddr 224.0.0.0/4 drop
+    ip daddr 240.0.0.0/4 drop
+  }
+}
+EOF
+
+    echo "[Firewall] Applying nftables configuration..."
+    nft -f /etc/nftables.conf
+
+    echo "[Proxy] Starting socat forwarder on port ${var.proxy_port} -> ${var.proxy_host}:${var.proxy_port}..."
+    exec socat TCP-LISTEN:${var.proxy_port},fork,reuseaddr TCP:${var.proxy_host}:${var.proxy_port}
+  EOT
+  ]
 
   restart = "unless-stopped"
 
