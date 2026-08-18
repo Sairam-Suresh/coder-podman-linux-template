@@ -6,7 +6,6 @@ on:
       - main
     paths-ignore:
       - 'images/**'
-      - '.github/workflows/publish-firewall-container.yml'
       - '.github/workflows/publish-workspace-containers.yml'
   workflow_dispatch:
 
@@ -18,10 +17,6 @@ jobs:
         working-directory: ${{ github.workspace }}
     env:
       TEMPLATE_NAME: "podman"
-      # Terraform automatically maps variables starting with TF_VAR_ to your tf variables
-      TF_VAR_tailscale_oauth_client_id: ${{ secrets.WORKSPACE_TS_OAUTH_CLIENT_ID }}
-      TF_VAR_tailscale_oauth_secret: ${{ secrets.WORKSPACE_TS_OAUTH_SECRET }}
-      TF_VAR_tailscale_tailnet: ${{ secrets.WORKSPACE_TS_TAILNET }}
     steps:
       - name: Tailscale
         uses: tailscale/github-action@v4
@@ -88,10 +83,7 @@ jobs:
             --name "${{ steps.name.outputs.version_name }}" \
             --message "${{ steps.message.outputs.pr_title }}" \
             --ignore-lockfile \
-            --yes \
-            --variable tailscale_oauth_client_id="${{ secrets.WORKSPACE_TS_OAUTH_CLIENT_ID }}" \
-            --variable tailscale_oauth_secret="${{ secrets.WORKSPACE_TS_OAUTH_SECRET }}" \
-            --variable tailscale_tailnet="${{ secrets.WORKSPACE_TS_TAILNET }}"
+            --yes
 
       - name: Promote template version
         if: success()

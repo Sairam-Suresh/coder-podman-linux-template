@@ -6,39 +6,20 @@ terraform {
     docker = {
       source = "kreuzwerker/docker"
     }
-    tailscale = {
-      source  = "tailscale/tailscale"
-      version = "~> 0.17.0"
-    }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.0"
-    }
   }
 }
 
-# --- Tailscale Configuration Variables ---
-variable "tailscale_oauth_client_id" {
+# --- Proxy Forwarder Configuration Variables ---
+variable "proxy_host" {
   type        = string
-  description = "The OAuth Client ID generated from the Tailscale Admin Console (needs 'devices' read/write scope)."
-  sensitive   = true
+  description = "The remote workspace HTTP and SOCKS5 proxy server host."
+  default     = "192.168.18.9"
 }
 
-variable "tailscale_oauth_secret" {
-  type        = string
-  description = "The OAuth Client Secret generated from the Tailscale Admin Console."
-  sensitive   = true
-}
-
-variable "tailscale_tailnet" {
-  type        = string
-  description = "Your Tailscale network name (e.g., 'mycompany.ts.net' or 'orgname')."
-}
-
-provider "tailscale" {
-  oauth_client_id     = var.tailscale_oauth_client_id
-  oauth_client_secret = var.tailscale_oauth_secret
-  tailnet             = var.tailscale_tailnet
+variable "proxy_port" {
+  type        = number
+  description = "The remote workspace HTTP and SOCKS5 proxy server port."
+  default     = 1055
 }
 
 provider "docker" {
@@ -49,14 +30,8 @@ provider "docker" {
 locals {
   username = data.coder_workspace_owner.me.name
 
-  workspace_hash_int = parseint(substr(md5(data.coder_workspace.me.id), 0, 7), 16)
-  ts_port = 40000 + (local.workspace_hash_int % 300)
-
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
-
-  # Standard Tailscale hostname registered in your dashboard
-  tailscale_hostname = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
 
   # Calculate the working directory based on git clone settings
   folder_name = data.coder_parameter.enable_git_clone.value == "true" ? replace(basename(try(data.coder_parameter.repo_url[0].value, "")), "/\\.git$/", "") : try(data.coder_parameter.manual_folder_name[0].value, "")
@@ -221,7 +196,15 @@ resource "coder_agent" "main" {
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
     DISPLAY             = ":1"
     # Point the internal agent environment to the host's Nix daemon Unix socket
-    NIX_REMOTE          = "unix:///nix/var/nix/daemon-socket/socket"
+    NIX_REMOTE  = "unix:///nix/var/nix/daemon-socket/socket"
+    HTTP_PROXY  = "http://127.0.0.1:${var.proxy_port}"
+    HTTPS_PROXY = "http://127.0.0.1:${var.proxy_port}"
+    http_proxy  = "http://127.0.0.1:${var.proxy_port}"
+    https_proxy = "http://127.0.0.1:${var.proxy_port}"
+    ALL_PROXY   = "http://127.0.0.1:${var.proxy_port}"
+    all_proxy   = "http://127.0.0.1:${var.proxy_port}"
+    NO_PROXY    = "localhost,127.0.0.1,host.containers.internal"
+    no_proxy    = "localhost,127.0.0.1,host.containers.internal"
   }
 
   metadata {
@@ -295,11 +278,11 @@ module "code-server" {
   extensions = ["catppuccin.catppuccin-vsc-icons", "github.vscode-pull-request-github", "catppuccin.catppuccin-vsc"]
 
   settings = {
-    "git.autofetch": true,
-    "git.enableSmartCommit": true,
-    "git.confirmSync": false,
-    "workbench.iconTheme": "catppuccin-mocha",
-    "workbench.colorTheme": "Catppuccin Mocha"
+    "git.autofetch" : true,
+    "git.enableSmartCommit" : true,
+    "git.confirmSync" : false,
+    "workbench.iconTheme" : "catppuccin-mocha",
+    "workbench.colorTheme" : "Catppuccin Mocha"
   }
 
   open_in   = "tab"
@@ -448,20 +431,6 @@ resource "docker_volume" "podman_cache" {
   }
 }
 
-resource "docker_volume" "tailscale_state" {
-  name = "coder-${data.coder_workspace.me.name}-tailscale-state"
-  lifecycle {
-    ignore_changes = all
-  }
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-}
 
 # 1. Base CLI Workspace (Non-Podman)
 data "docker_registry_image" "workspace" {
@@ -513,33 +482,20 @@ resource "docker_image" "workspace_desktop_podman" {
   keep_locally  = true
 }
 
-data "docker_registry_image" "firewall" {
-  name = "ghcr.io/sairam-suresh/coder-workspace-firewall:latest"
-}
-
-resource "docker_image" "firewall" {
-  name          = data.docker_registry_image.firewall.name
-  pull_triggers = [data.docker_registry_image.firewall.sha256_digest]
-  keep_locally  = true
-}
-
-# 5. Tailscale Sidecar Image
-resource "docker_image" "tailscale" {
-  name         = "docker.io/tailscale/tailscale:stable"
+# 5. Proxy Forwarder Sidecar Image
+resource "docker_image" "proxy" {
+  name         = "docker.io/alpine/socat:latest"
   keep_locally = true
 }
 
-# The Sidecar Firewall Container (owns the pasta network stack)
-resource "docker_container" "firewall" {
+# The Sidecar Proxy Forwarder Container (owns the pasta network stack)
+resource "docker_container" "proxy" {
   count = data.coder_workspace.me.start_count
-  image = docker_image.firewall.image_id
-  name  = "${local.resource_name}-firewall"
+  image = docker_image.proxy.image_id
+  name  = "${local.resource_name}-proxy"
 
   network_mode = "pasta"
-
-  capabilities {
-    add = ["NET_ADMIN"]
-  }
+  command      = ["tcp-listen:${var.proxy_port},fork,reuseaddr", "tcp-connect:${var.proxy_host}:${var.proxy_port}"]
 
   restart = "unless-stopped"
 
@@ -574,74 +530,14 @@ resource "terraform_data" "nix_daemon_bootstrap" {
   }
 }
 
-resource "tailscale_tailnet_key" "workspace_key" {
-  reusable      = true
-  ephemeral     = false
-  preauthorized = true
-  tags          = ["tag:coder-workspace"]
-}
-
-resource "docker_container" "tailscale" {
-  count = data.coder_workspace.me.start_count
-  image = docker_image.tailscale.image_id
-  name  = "${local.resource_name}-tailscale"
-
-  # Bind Tailscale directly to the shared firewall pasta network workspace stack
-  network_mode = "container:${docker_container.firewall[count.index].name}"
-
-  capabilities {
-    add = ["NET_ADMIN"]
-  }
-
-  # Standard tun interface registration
-  devices {
-    host_path      = "/dev/net/tun"
-    container_path = "/dev/net/tun"
-    permissions    = "rwm"
-  }
-
-  env = [
-    "TS_AUTHKEY=${tailscale_tailnet_key.workspace_key.key}",
-    "TS_HOSTNAME=${local.tailscale_hostname}",
-    "TS_STATE_DIR=/var/lib/tailscale",
-    "TS_ACCEPT_DNS=true",
-    "TS_USERSPACE=false",
-    "TS_TAILSCALED_EXTRA_ARGS=--port=${local.ts_port}"
-  ]
-
-  ports {
-    internal = local.ts_port
-    external = local.ts_port
-    protocol = "udp"
-  }
-
-  volumes {
-    container_path = "/var/lib/tailscale"
-    volume_name    = docker_volume.tailscale_state.name
-  }
-
-  restart = "unless-stopped"
-
-  depends_on = [docker_container.firewall]
-
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-}
-
 resource "docker_container" "workspace" {
   count    = data.coder_workspace.me.start_count
   image    = local.container_image
   name     = local.resource_name
   hostname = data.coder_workspace.me.name
 
-  # Connect to the Firewall's network namespace
-  network_mode = "container:${docker_container.firewall[count.index].name}"
+  # Connect to the Proxy Forwarder's network namespace
+  network_mode = "container:${docker_container.proxy[count.index].name}"
 
   userns_mode = "keep-id:uid=1000,gid=1000"
   user        = "1000:1000"
@@ -662,6 +558,20 @@ resource "docker_container" "workspace" {
     echo "Aligning home directory permissions..."
     sudo chown -R 1000:1000 "$HOME" || true
 
+    # Configure apt proxy
+    echo "Configuring apt to use HTTP proxy at http://127.0.0.1:${var.proxy_port}..."
+    echo 'Acquire::http::Proxy "http://127.0.0.1:${var.proxy_port}";' | sudo tee /etc/apt/apt.conf.d/01proxy >/dev/null
+    echo 'Acquire::https::Proxy "http://127.0.0.1:${var.proxy_port}";' | sudo tee -a /etc/apt/apt.conf.d/01proxy >/dev/null
+
+    export HTTP_PROXY="http://127.0.0.1:${var.proxy_port}"
+    export HTTPS_PROXY="http://127.0.0.1:${var.proxy_port}"
+    export http_proxy="http://127.0.0.1:${var.proxy_port}"
+    export https_proxy="http://127.0.0.1:${var.proxy_port}"
+    export ALL_PROXY="http://127.0.0.1:${var.proxy_port}"
+    export all_proxy="http://127.0.0.1:${var.proxy_port}"
+    export NO_PROXY="localhost,127.0.0.1,host.containers.internal"
+    export no_proxy="localhost,127.0.0.1,host.containers.internal"
+
     sudo -E apt update
 
     echo "Downloading homelab certificates..."
@@ -670,15 +580,15 @@ resource "docker_container" "workspace" {
     CERT_DIR="$HOME/.local/share/ca-certificates"
     mkdir -p "$CERT_DIR"
 
-    # Download root certificate directly through Tailscale routes
-    if curl -fsSL -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
+    # Download root certificate directly if available via proxy
+    if curl -fsSL -x "http://127.0.0.1:${var.proxy_port}" -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
       echo "Successfully downloaded root certificate"
     else
       echo "Warning: Failed to download root certificate"
     fi
 
-    # Download intermediate certificate directly through Tailscale routes
-    if curl -fsSL -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
+    # Download intermediate certificate directly if available via proxy
+    if curl -fsSL -x "http://127.0.0.1:${var.proxy_port}" -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
       echo "Successfully downloaded intermediate certificate"
     else
       echo "Warning: Failed to download intermediate certificate"
@@ -769,18 +679,26 @@ YAML
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
     "INSTALL_DE=${data.coder_parameter.install_de.value}",
-    "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket"
+    "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket",
+    "HTTP_PROXY=http://127.0.0.1:${var.proxy_port}",
+    "HTTPS_PROXY=http://127.0.0.1:${var.proxy_port}",
+    "http_proxy=http://127.0.0.1:${var.proxy_port}",
+    "https_proxy=http://127.0.0.1:${var.proxy_port}",
+    "ALL_PROXY=http://127.0.0.1:${var.proxy_port}",
+    "all_proxy=http://127.0.0.1:${var.proxy_port}",
+    "NO_PROXY=localhost,127.0.0.1,host.containers.internal",
+    "no_proxy=localhost,127.0.0.1,host.containers.internal"
   ]
 
   volumes {
-    container_path = "/home/coder"
-    volume_name    = docker_volume.home_volume.name
+    container_path  = "/home/coder"
+    volume_name     = docker_volume.home_volume.name
     selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
 
   # Mount the shared Nix Store managed by the central nix-daemon container
   volumes {
-    volume_name       = "shared_nix_store"
+    volume_name     = "shared_nix_store"
     container_path  = "/nix/store"
     selinux_relabel = "z"
     read_only       = true
@@ -788,7 +706,7 @@ YAML
 
   # Mount the shared Nix state and daemon socket managed by the central nix-daemon container
   volumes {
-    volume_name       = "shared_nix_var"
+    volume_name     = "shared_nix_var"
     container_path  = "/nix/var"
     selinux_relabel = "z"
   }
@@ -808,8 +726,8 @@ YAML
   dynamic "volumes" {
     for_each = data.coder_parameter.enable_devcontainer.value == "true" ? [1] : []
     content {
-      container_path = "/var/lib/containers"
-      volume_name    = docker_volume.podman_storage.name
+      container_path  = "/var/lib/containers"
+      volume_name     = docker_volume.podman_storage.name
       selinux_relabel = "z"
     }
   }
@@ -825,10 +743,9 @@ YAML
 
   restart = "unless-stopped"
 
-  # Depend on tailscale sidecar and firewall so network namespaces exist
+  # Depend on proxy sidecar so network namespace exists
   depends_on = [
-    docker_container.firewall,
-    docker_container.tailscale,
+    docker_container.proxy,
     terraform_data.nix_daemon_bootstrap
   ]
 
@@ -868,98 +785,14 @@ module "code-server-subagent" {
   port    = "13331"
 
   settings = {
-    "git.autofetch": true,
-    "git.enableSmartCommit": true,
-    "git.confirmSync": false,
-    "workbench.iconTheme": "catppuccin-mocha",
-    "workbench.colorTheme": "Catppuccin Mocha"
+    "git.autofetch" : true,
+    "git.enableSmartCommit" : true,
+    "git.confirmSync" : false,
+    "workbench.iconTheme" : "catppuccin-mocha",
+    "workbench.colorTheme" : "Catppuccin Mocha"
   }
 
   subdomain = true
   agent_id  = coder_devcontainer.devcontainer[count.index].subagent_id
   order     = 1
-}
-
-# --- Lifecycle Device Purger (Local Execution on Destroy) ---
-# Triggers on workspace teardown to cleanly unregister the device from your Tailnet.
-resource "null_resource" "tailscale_device_purger" {
-  triggers = {
-    hostname     = local.tailscale_hostname
-    oauth_id     = var.tailscale_oauth_client_id
-    oauth_secret = var.tailscale_oauth_secret
-    tailnet_name = var.tailscale_tailnet
-  }
-
-  lifecycle {
-    create_before_destroy = false
-  }
-
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<EOT
-      python3 -c '
-import urllib.request, urllib.parse, json, sys, base64
-
-client_id = sys.argv[1]
-client_secret = sys.argv[2]
-tailnet = sys.argv[3]
-hostname = sys.argv[4]
-
-# 1. Fetch Tailscale API OAuth Token
-token_url = "https://api.tailscale.com/api/v2/oauth/token"
-data = urllib.parse.urlencode({"grant_type": "client_credentials"}).encode("utf-8")
-req = urllib.request.Request(token_url, data=data)
-auth_str = f"{client_id}:{client_secret}"
-auth_b64 = base64.b64encode(auth_str.encode()).decode()
-req.add_header("Authorization", f"Basic {auth_b64}")
-
-try:
-    with urllib.request.urlopen(req) as response:
-        res = json.loads(response.read().decode())
-        token = res.get("access_token")
-except Exception as e:
-    print(f"Failed to fetch Tailscale OAuth Token: {e}")
-    sys.exit(0)
-
-# 2. Query All Devices in the Tailnet
-devices_url = f"https://api.tailscale.com/api/v2/tailnet/{tailnet}/devices"
-req = urllib.request.Request(devices_url)
-req.add_header("Authorization", f"Bearer {token}")
-try:
-    with urllib.request.urlopen(req) as response:
-        res = json.loads(response.read().decode())
-        devices = res.get("devices", [])
-except Exception as e:
-    print(f"Failed to fetch list of devices: {e}")
-    sys.exit(0)
-
-# 3. Search and Identify Target Device ID
-target_device_id = None
-for dev in devices:
-    curr_hostname = dev.get("hostname", "")
-    curr_name = dev.get("name", "").split(".")[0]
-    if curr_hostname.lower() == hostname.lower() or curr_name.lower() == hostname.lower():
-        target_device_id = dev.get("id")
-        break
-
-if not target_device_id:
-    print(f"Tailscale device with hostname {hostname} was not found (already deleted or did not register).")
-    sys.exit(0)
-
-# 4. Cleanly Delete the Device Node
-print(f"Discovered Tailscale device id: {target_device_id}. Requesting deletion...")
-delete_url = f"https://api.tailscale.com/api/v2/device/{target_device_id}"
-req = urllib.request.Request(delete_url, method="DELETE")
-req.add_header("Authorization", f"Bearer {token}")
-try:
-    with urllib.request.urlopen(req) as response:
-        if response.status in [200, 204]:
-            print("Successfully deleted the workspace device from the Tailscale dashboard!")
-        else:
-            print(f"Warning: Deletion returned unexpected status: {response.status}")
-except Exception as e:
-    print(f"Failed to delete Tailscale device: {e}")
-' "${self.triggers.oauth_id}" "${self.triggers.oauth_secret}" "${self.triggers.tailnet_name}" "${self.triggers.hostname}"
-    EOT
-  }
 }
