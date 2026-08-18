@@ -173,17 +173,16 @@ resource "coder_agent" "main" {
 
     # Automatically allow direnv if the workspace is marked as trusted
     if [ "${data.coder_parameter.trusted.value}" = "true" ]; then
-      echo "Workspace is trusted. Waiting for .envrc to authorize direnv..."
+      echo "Workspace is trusted. Waiting for .envrc to authorize direnv in background..."
       (
         for i in {1..30}; do
           if [ -f "${local.workdir}/.envrc" ]; then
-            echo "Found .envrc, running direnv allow..."
             direnv allow "${local.workdir}"
             break
           fi
           sleep 1
         done
-      ) &
+      ) </dev/null >/dev/null 2>&1 &
     fi
   EOT
 
