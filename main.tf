@@ -6,6 +6,14 @@ terraform {
     docker = {
       source = "kreuzwerker/docker"
     }
+    tailscale = {
+      source  = "tailscale/tailscale"
+      version = "~> 0.17.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 
