@@ -26,7 +26,7 @@ locals {
 
   coder_server_ip   = "169.254.1.5"
   coder_server_port = 7080
-  coder_server_url  = "http://${local.coder_server_ip}:${local.coder_server_port}"
+  coder_server_url  = "http://${local.coder_server_ip}:${local.coder_server_port}/"
 
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
@@ -670,7 +670,7 @@ YAML
     export CODER_AGENT_URL="${local.coder_server_url}"
 
     # Now start the Coder agent (which will connect and then run startup_script)
-    exec bash -c '${replace(replace(coder_agent.main[count.index].init_script, data.coder_workspace.me.access_url, local.coder_server_url), "/https?:\\/\\/(localhost|127\\.0\\.0\\.1):[0-9]+/", local.coder_server_url)}'
+    exec bash -c '${replace(replace(replace(coder_agent.main[count.index].init_script, "${trimsuffix(data.coder_workspace.me.access_url, "/")}/", local.coder_server_url), trimsuffix(data.coder_workspace.me.access_url, "/"), trimsuffix(local.coder_server_url, "/")), "/https?:\\/\\/(localhost|127\\.0\\.0\\.1):[0-9]+/", trimsuffix(local.coder_server_url, "/"))}'
   EOT
   ]
 
