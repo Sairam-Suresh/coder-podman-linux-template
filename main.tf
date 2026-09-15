@@ -485,6 +485,7 @@ resource "docker_container" "firewall" {
   name  = "${local.resource_name}-firewall"
 
   network_mode = "pasta:--map-guest-addr,${local.coder_server_ip},-t,${local.coder_server_port},-T,${local.coder_server_port},-u,auto"
+  network_mode = "pasta:--map-guest-addr,${local.coder_server_ip},-t,none,-T,none,-u,auto"
 
   capabilities {
     add = ["NET_ADMIN"]
