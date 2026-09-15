@@ -618,6 +618,25 @@ resource "docker_container" "workspace" {
     export CURL_CA_BUNDLE="$CERT_DIR/ca-bundle.crt"
     export NODE_EXTRA_CA_CERTS="$CERT_DIR/ca-bundle.crt"
 
+    # Map Coder host alias to the direct server IP
+    if ! grep -q "coder.service.internal" /etc/hosts 2>/dev/null; then
+      echo "${local.coder_server_ip} coder.service.internal" | sudo tee -a /etc/hosts
+    fi
+
+    # Ensure Podman global configuration sets CODER_AGENT_URL for child containers (devcontainers)
+    # Safely modify existing containers.conf without replacing its critical PinP engine settings
+    for conf in /etc/containers/containers.conf "$HOME/.config/containers/containers.conf"; do
+      if [ -f "$conf" ]; then
+        if grep -q "CODER_AGENT_URL" "$conf"; then
+          sudo sed -i 's|.*CODER_AGENT_URL=.*|  "CODER_AGENT_URL=${local.coder_server_url}",|' "$conf"
+        elif grep -q "env = \[" "$conf"; then
+          sudo sed -i '/env = \[/a \ \ "CODER_AGENT_URL=${local.coder_server_url}",' "$conf"
+        elif grep -q "\[containers\]" "$conf"; then
+          sudo sed -i '/\[containers\]/a env = [\n  "CODER_AGENT_URL=${local.coder_server_url}",\n]' "$conf"
+        fi
+      fi
+    done
+
     # Trigger local rootless-in-rootless Podman engine socket activation if the platform supports it
     if [ -f "/usr/local/bin/init-local-podman.sh" ]; then
       echo "Local Podman helper script discovered. Starting system engine..."
