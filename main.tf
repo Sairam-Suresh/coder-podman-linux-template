@@ -9,17 +9,11 @@ terraform {
   }
 }
 
-# --- Proxy Forwarder Configuration Variables ---
-variable "proxy_host" {
+# --- Subnet Router Configuration Variable ---
+variable "subnet_router_ip" {
   type        = string
-  description = "The remote workspace HTTP and SOCKS5 proxy server host."
+  description = "The LAN IP of the Raspberry Pi acting as the Tailscale subnet router."
   default     = "192.168.18.9"
-}
-
-variable "proxy_port" {
-  type        = number
-  description = "The remote workspace HTTP and SOCKS5 proxy server port."
-  default     = 1055
 }
 
 provider "docker" {
@@ -29,6 +23,10 @@ provider "docker" {
 
 locals {
   username = data.coder_workspace_owner.me.name
+
+  coder_server_ip   = "169.254.1.5"
+  coder_server_port = 7080
+  coder_server_url  = "http://${local.coder_server_ip}:${local.coder_server_port}"
 
   # Unique name for containers and resources
   resource_name = "coder-${local.username}-${lower(data.coder_workspace.me.name)}"
@@ -195,15 +193,8 @@ resource "coder_agent" "main" {
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
     DISPLAY             = ":1"
     # Point the internal agent environment to the host's Nix daemon Unix socket
-    NIX_REMOTE  = "unix:///nix/var/nix/daemon-socket/socket"
-    HTTP_PROXY  = "http://127.0.0.1:${var.proxy_port}"
-    HTTPS_PROXY = "http://127.0.0.1:${var.proxy_port}"
-    http_proxy  = "http://127.0.0.1:${var.proxy_port}"
-    https_proxy = "http://127.0.0.1:${var.proxy_port}"
-    ALL_PROXY   = "http://127.0.0.1:${var.proxy_port}"
-    all_proxy   = "http://127.0.0.1:${var.proxy_port}"
-    NO_PROXY    = "localhost,127.0.0.1,host.containers.internal"
-    no_proxy    = "localhost,127.0.0.1,host.containers.internal"
+    NIX_REMOTE      = "unix:///nix/var/nix/daemon-socket/socket"
+    CODER_AGENT_URL = local.coder_server_url
   }
 
   metadata {
@@ -481,19 +472,19 @@ resource "docker_image" "workspace_desktop_podman" {
   keep_locally  = true
 }
 
-# 5. Proxy Forwarder and Firewall Sidecar Image
-resource "docker_image" "proxy" {
+# 5. Firewall Sidecar Image
+resource "docker_image" "firewall" {
   name         = "docker.io/library/alpine:3.19"
   keep_locally = true
 }
 
-# The Sidecar Proxy Forwarder & Firewall Container (owns the pasta network stack)
-resource "docker_container" "proxy" {
+# The Sidecar Firewall Container (owns the pasta network stack)
+resource "docker_container" "firewall" {
   count = data.coder_workspace.me.start_count
-  image = docker_image.proxy.image_id
-  name  = "${local.resource_name}-proxy"
+  image = docker_image.firewall.image_id
+  name  = "${local.resource_name}-firewall"
 
-  network_mode = "pasta"
+  network_mode = "pasta:--map-guest-addr,${local.coder_server_ip},-t,${local.coder_server_port},-T,${local.coder_server_port},-u,auto"
 
   capabilities {
     add = ["NET_ADMIN"]
@@ -502,7 +493,7 @@ resource "docker_container" "proxy" {
   entrypoint = ["/bin/sh", "-c"]
   command = [<<-EOT
     set -e
-    apk add --no-cache nftables socat
+    apk add --no-cache nftables
 
     cat <<EOF > /etc/nftables.conf
 flush ruleset
@@ -527,13 +518,22 @@ table inet filter {
     udp dport 53 accept
     tcp dport 53 accept
 
-    # 4. Allow established & related return traffic
+    # 4. Allow STUN discovery for direct connections
+    udp dport 3478 accept
+
+    # 5. Allow established & related return traffic
     ct state established,related accept
 
-    # 5. Explicitly allow outbound traffic to the remote proxy server
-    ip daddr ${var.proxy_host} tcp dport ${var.proxy_port} accept
+    # 6. Explicitly allow outbound traffic to the Coder server
+    ip daddr ${local.coder_server_ip} tcp dport ${local.coder_server_port} accept
 
-    # 6. Block internal private networks (LAN egress filter)
+    # 7. Allow Tailscale CGNAT IP range (for direct WireGuard connections to laptop)
+    ip daddr 100.64.0.0/10 accept
+
+    # 8. Allow return/peer traffic to the Raspberry Pi subnet router
+    ip daddr ${var.subnet_router_ip} accept
+
+    # 9. Block internal private networks (LAN egress filter)
     ip daddr 10.0.0.0/8 drop
     ip daddr 172.16.0.0/12 drop
     ip daddr 192.168.0.0/16 drop
@@ -547,8 +547,8 @@ EOF
     echo "[Firewall] Applying nftables configuration..."
     nft -f /etc/nftables.conf
 
-    echo "[Proxy] Starting socat forwarder on port ${var.proxy_port} -> ${var.proxy_host}:${var.proxy_port}..."
-    exec socat TCP-LISTEN:${var.proxy_port},fork,reuseaddr TCP:${var.proxy_host}:${var.proxy_port}
+    echo "[Firewall] Firewall rules applied successfully. Keeping sidecar active..."
+    exec sleep infinity
   EOT
   ]
 
@@ -570,16 +570,9 @@ resource "terraform_data" "nix_daemon_bootstrap" {
       ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_store"
       ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_var"
       ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman run -d --name nix-daemon --replace --restart always --privileged \
-        --http-proxy=false \
         -v shared_nix_store:/nix/store:z \
         -v shared_nix_var:/nix/var:z \
         -e NIX_CONFIG='experimental-features = flakes nix-command' \
-        -e HTTP_PROXY= \
-        -e HTTPS_PROXY= \
-        -e http_proxy= \
-        -e https_proxy= \
-        -e ALL_PROXY= \
-        -e all_proxy= \
         docker.io/nixos/nix:latest nix-daemon"
     EOT
   }
@@ -591,8 +584,8 @@ resource "docker_container" "workspace" {
   name     = local.resource_name
   hostname = data.coder_workspace.me.name
 
-  # Connect to the Proxy Forwarder's network namespace
-  network_mode = "container:${docker_container.proxy[count.index].name}"
+  # Connect to the Firewall's network namespace
+  network_mode = "container:${docker_container.firewall[count.index].name}"
 
   userns_mode = "keep-id:uid=1000,gid=1000"
   user        = "1000:1000"
@@ -613,89 +606,19 @@ resource "docker_container" "workspace" {
     echo "Aligning home directory permissions..."
     sudo chown -R 1000:1000 "$HOME" || true
 
-    # Configure apt proxy
-    echo "Configuring apt to use HTTP proxy at http://127.0.0.1:${var.proxy_port}..."
-    echo 'Acquire::http::Proxy "http://127.0.0.1:${var.proxy_port}";' | sudo tee /etc/apt/apt.conf.d/01proxy >/dev/null
-    echo 'Acquire::https::Proxy "http://127.0.0.1:${var.proxy_port}";' | sudo tee -a /etc/apt/apt.conf.d/01proxy >/dev/null
+    sudo apt update
 
-    export HTTP_PROXY="http://127.0.0.1:${var.proxy_port}"
-    export HTTPS_PROXY="http://127.0.0.1:${var.proxy_port}"
-    export http_proxy="http://127.0.0.1:${var.proxy_port}"
-    export https_proxy="http://127.0.0.1:${var.proxy_port}"
-    export ALL_PROXY="http://127.0.0.1:${var.proxy_port}"
-    export all_proxy="http://127.0.0.1:${var.proxy_port}"
-    export NO_PROXY="localhost,127.0.0.1,host.containers.internal"
-    export no_proxy="localhost,127.0.0.1,host.containers.internal"
-
-    sudo -E apt update
-
-    echo "Downloading homelab certificates..."
-
-    # Create user-writable certificate directory
+    # Create certificate directory and copy system bundle for nested container runtimes
     CERT_DIR="$HOME/.local/share/ca-certificates"
     mkdir -p "$CERT_DIR"
+    cp -f /etc/ssl/certs/ca-certificates.crt "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
 
-    # Download root certificate directly if available via proxy
-    if curl -fsSL -x "http://127.0.0.1:${var.proxy_port}" -o "$CERT_DIR/homelab-root.crt" http://stepca.service.internal/roots.pem; then
-      echo "Successfully downloaded root certificate"
-    else
-      echo "Warning: Failed to download root certificate"
-    fi
-
-    # Download intermediate certificate directly if available via proxy
-    if curl -fsSL -x "http://127.0.0.1:${var.proxy_port}" -o "$CERT_DIR/homelab-intermed.crt" http://stepca.service.internal/intermediates.pem; then
-      echo "Successfully downloaded intermediate certificate"
-    else
-      echo "Warning: Failed to download intermediate certificate"
-    fi
-
-    # Create a combined certificate bundle for applications that need a single file
-    cat "$CERT_DIR/homelab-root.crt" "$CERT_DIR/homelab-intermed.crt" > "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
-
-    if [ -f "$CERT_DIR/homelab-root.crt" ]; then
-      echo "Importing certificates into Debian system-wide trust store..."
-      sudo mkdir -p /usr/local/share/ca-certificates/homelab
-      sudo cp "$CERT_DIR/homelab-root.crt" /usr/local/share/ca-certificates/homelab/root.crt 2>/dev/null || true
-      sudo cp "$CERT_DIR/homelab-intermed.crt" /usr/local/share/ca-certificates/homelab/intermediate.crt 2>/dev/null || true
-      sudo update-ca-certificates --fresh >/dev/null
-      echo "System trust store rebuilt successfully."
-    fi
-
-    appended=0
-    system_bundles=( \
-      "/etc/ssl/certs/ca-certificates.crt" \
-      "/etc/pki/tls/certs/ca-bundle.crt" \
-      "/etc/ssl/cert.pem" \
-      "/etc/ssl/certs/ca-bundle.crt" \
-      "/etc/ssl/ca-bundle.pem" \
-      "/etc/ssl/ca-bundle.crt" \
-      "/usr/local/share/ca-certificates/ca-certificates.crt" \
-    )
-    for f in "$${system_bundles[@]}"; do
-      if [ -f "$f" ]; then
-        echo "Appending system trust store $f to $CERT_DIR/ca-bundle.crt"
-        cat "$f" >> "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
-        appended=1
-      fi
-    done
-
-    # If we didn't find a packaged bundle, append individual cert files from /etc/ssl/certs
-    if [ "$appended" -eq 0 ] && [ -d /etc/ssl/certs ]; then
-      echo "Appending certificates from /etc/ssl/certs to $CERT_DIR/ca-bundle.crt"
-      find /etc/ssl/certs -type f \( -name "*.crt" -o -name "*.pem" \) -print0 | while IFS= read -r -d '' certfile; do
-        cat "$certfile" >> "$CERT_DIR/ca-bundle.crt" 2>/dev/null || true
-      done
-    fi
-
-    # Export certificate paths for all user processes
     export SSL_CERT_FILE="$CERT_DIR/ca-bundle.crt"
     export REQUESTS_CA_BUNDLE="$CERT_DIR/ca-bundle.crt"
     export CURL_CA_BUNDLE="$CERT_DIR/ca-bundle.crt"
     export NODE_EXTRA_CA_CERTS="$CERT_DIR/ca-bundle.crt"
 
-    echo "Certificates configured at $CERT_DIR/ca-bundle.crt"
-
-    # Trigger local rootful-in-rootless Podman engine socket activation if the platform supports it
+    # Trigger local rootless-in-rootless Podman engine socket activation if the platform supports it
     if [ -f "/usr/local/bin/init-local-podman.sh" ]; then
       echo "Local Podman helper script discovered. Starting system engine..."
       /usr/local/bin/init-local-podman.sh
@@ -725,24 +648,18 @@ YAML
     fi
 
     export PATH="$HOME/.local/bin:$PATH"
+    export CODER_AGENT_URL="${local.coder_server_url}"
 
     # Now start the Coder agent (which will connect and then run startup_script)
-    exec bash -c '${coder_agent.main[count.index].init_script}'
+    exec bash -c '${replace(replace(coder_agent.main[count.index].init_script, data.coder_workspace.me.access_url, local.coder_server_url), "/https?:\\/\\/(localhost|127\\.0\\.0\\.1):[0-9]+/", local.coder_server_url)}'
   EOT
   ]
 
   env = [
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
+    "CODER_AGENT_URL=${local.coder_server_url}",
     "INSTALL_DE=${data.coder_parameter.install_de.value}",
-    "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket",
-    "HTTP_PROXY=http://127.0.0.1:${var.proxy_port}",
-    "HTTPS_PROXY=http://127.0.0.1:${var.proxy_port}",
-    "http_proxy=http://127.0.0.1:${var.proxy_port}",
-    "https_proxy=http://127.0.0.1:${var.proxy_port}",
-    "ALL_PROXY=http://127.0.0.1:${var.proxy_port}",
-    "all_proxy=http://127.0.0.1:${var.proxy_port}",
-    "NO_PROXY=localhost,127.0.0.1,host.containers.internal",
-    "no_proxy=localhost,127.0.0.1,host.containers.internal"
+    "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket"
   ]
 
   volumes {
@@ -798,9 +715,9 @@ YAML
 
   restart = "unless-stopped"
 
-  # Depend on proxy sidecar so network namespace exists
+  # Depend on firewall sidecar so network namespace exists
   depends_on = [
-    docker_container.proxy,
+    docker_container.firewall,
     terraform_data.nix_daemon_bootstrap
   ]
 
