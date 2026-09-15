@@ -484,7 +484,6 @@ resource "docker_container" "firewall" {
   image = docker_image.firewall.image_id
   name  = "${local.resource_name}-firewall"
 
-  network_mode = "pasta:--map-guest-addr,${local.coder_server_ip},-t,${local.coder_server_port},-T,${local.coder_server_port},-u,auto"
   network_mode = "pasta:--map-guest-addr,${local.coder_server_ip},-t,none,-T,none,-u,auto"
 
   capabilities {
