@@ -459,7 +459,7 @@ data "docker_registry_image" "workspace" {
 }
 
 resource "docker_image" "workspace" {
-  name          = "${replace(data.docker_registry_image.workspace.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace.sha256_digest}"
+  name          = "${data.docker_registry_image.workspace.name}@${data.docker_registry_image.workspace.sha256_digest}"
   pull_triggers = [data.docker_registry_image.workspace.sha256_digest]
   triggers = {
     digest = data.docker_registry_image.workspace.sha256_digest
@@ -473,7 +473,7 @@ data "docker_registry_image" "workspace_podman" {
 }
 
 resource "docker_image" "workspace_podman" {
-  name          = "${replace(data.docker_registry_image.workspace_podman.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_podman.sha256_digest}"
+  name          = "${data.docker_registry_image.workspace_podman.name}@${data.docker_registry_image.workspace_podman.sha256_digest}"
   pull_triggers = [data.docker_registry_image.workspace_podman.sha256_digest]
   triggers = {
     digest = data.docker_registry_image.workspace_podman.sha256_digest
@@ -487,7 +487,7 @@ data "docker_registry_image" "workspace_desktop" {
 }
 
 resource "docker_image" "workspace_desktop" {
-  name          = "${replace(data.docker_registry_image.workspace_desktop.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop.sha256_digest}"
+  name          = "${data.docker_registry_image.workspace_desktop.name}@${data.docker_registry_image.workspace_desktop.sha256_digest}"
   pull_triggers = [data.docker_registry_image.workspace_desktop.sha256_digest]
   triggers = {
     digest = data.docker_registry_image.workspace_desktop.sha256_digest
@@ -501,7 +501,7 @@ data "docker_registry_image" "workspace_desktop_podman" {
 }
 
 resource "docker_image" "workspace_desktop_podman" {
-  name          = "${replace(data.docker_registry_image.workspace_desktop_podman.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop_podman.sha256_digest}"
+  name          = "${data.docker_registry_image.workspace_desktop_podman.name}@${data.docker_registry_image.workspace_desktop_podman.sha256_digest}"
   pull_triggers = [data.docker_registry_image.workspace_desktop_podman.sha256_digest]
   triggers = {
     digest = data.docker_registry_image.workspace_desktop_podman.sha256_digest
