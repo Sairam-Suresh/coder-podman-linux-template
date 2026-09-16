@@ -501,7 +501,6 @@ flush ruleset
 table inet filter {
   chain input {
     type filter hook input priority 0; policy accept;
-    ct state established,related accept
   }
   chain forward {
     type filter hook forward priority 0; policy accept;
@@ -512,18 +511,18 @@ table inet filter {
     # 1. Allow loopback traffic
     oif "lo" accept
 
-    # 2. Fast-track established & related return traffic (highest volume)
-    ct state established,related accept
-
-    # 3. Allow DHCP configuration requests
+    # 2. Allow DHCP configuration requests
     udp dport 67 accept
 
-    # 4. Allow DNS resolution
+    # 3. Allow DNS resolution
     udp dport 53 accept
     tcp dport 53 accept
 
-    # 5. Allow STUN discovery for direct connections
+    # 4. Allow STUN discovery for direct connections
     udp dport 3478 accept
+
+    # 5. Allow established & related return traffic
+    ct state established,related accept
 
     # 6. Explicitly allow outbound traffic to the Coder server
     ip daddr ${local.coder_server_ip} tcp dport ${local.coder_server_port} accept
