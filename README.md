@@ -36,14 +36,13 @@ This template provisions the following resources:
 - Docker image (built by Docker socket and kept locally)
 - Docker container pod (ephemeral)
 - Docker volume (`/workspaces`) - Dedicated persistent storage for project and git repository data
-- Docker volume (`/home/coder`) - User home directory volume (can be removed in the future for seamless image updates)
+- Ephemeral home directory (`/home/coder`) - Directly populated from the container image so tools, dotfiles, and system packages are automatically updated upon image rebuild
 
-### Workspace Directory Structure & Migration
+### Workspace Directory Structure
 
 Repositories and custom folders are placed in `/workspaces/<folder-name>` owned by the `coder` user (`1000:1000`).
 
-- **Automatic Migration**: On startup, existing workspaces with projects in `/home/coder/<folder-name>` or git repositories directly in `~` are automatically moved to `/workspaces/<folder-name>`, and a backward-compatible symlink is created in `~` to ensure uninterrupted paths.
-- **Future Image Updates**: By separating project storage into `/workspaces`, the `/home/coder` volume mount can safely be removed in the future so that changes and tools in the base image's home directory are always up to date.
+- **Image Updates**: Because project storage is cleanly decoupled into `/workspaces`, any changes, updates, or tools in the upstream container image's home directory are immediately applied on workspace rebuild.
 
 > **Note**
 > This template is designed to be a starting point! Edit the Terraform to extend the template to support your use case.

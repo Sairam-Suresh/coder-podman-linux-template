@@ -374,28 +374,6 @@ module "devcontainers-cli" {
   start_blocks_login = false
 }
 
-resource "docker_volume" "home_volume" {
-  name = "coder-${data.coder_workspace.me.name}-home"
-  lifecycle {
-    ignore_changes = all
-  }
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.owner_id"
-    value = data.coder_workspace_owner.me.id
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-  labels {
-    label = "coder.workspace_name_at_creation"
-    value = data.coder_workspace.me.name
-  }
-}
 
 resource "docker_volume" "workspaces_volume" {
   name = "coder-${data.coder_workspace.me.name}-workspaces"
@@ -639,38 +617,6 @@ resource "docker_container" "workspace" {
     sudo chown -R 1000:1000 /workspaces
     sudo chmod 775 /workspaces
 
-    # Migrate existing workspace folder from /home/coder to /workspaces if present
-    if [ -n "${local.folder_name}" ] && [ -d "$HOME/${local.folder_name}" ] && [ ! -L "$HOME/${local.folder_name}" ]; then
-      if [ ! -e "/workspaces/${local.folder_name}" ]; then
-        echo "Migrating primary workspace folder $HOME/${local.folder_name} to /workspaces/${local.folder_name}..."
-        mv "$HOME/${local.folder_name}" "/workspaces/${local.folder_name}"
-        ln -s "/workspaces/${local.folder_name}" "$HOME/${local.folder_name}"
-        chown -h 1000:1000 "$HOME/${local.folder_name}" || true
-        chown -R 1000:1000 "/workspaces/${local.folder_name}" || true
-        echo "Migration complete with backward-compatibility symlink."
-      fi
-    fi
-
-    # Migrate any additional git repositories located under $HOME to /workspaces
-    for dir in "$HOME"/*; do
-      if [ -d "$dir" ] && [ ! -L "$dir" ] && [ -d "$dir/.git" ]; then
-        repo_name=$(basename "$dir")
-        if [ ! -e "/workspaces/$repo_name" ]; then
-          echo "Migrating git repository $dir to /workspaces/$repo_name..."
-          mv "$dir" "/workspaces/$repo_name"
-          ln -s "/workspaces/$repo_name" "$dir"
-          chown -h 1000:1000 "$dir" || true
-          chown -R 1000:1000 "/workspaces/$repo_name" || true
-        fi
-      fi
-    done
-
-    # Ensure backward-compatibility symlink from $HOME to /workspaces for the primary folder
-    if [ -n "${local.folder_name}" ] && [ -e "/workspaces/${local.folder_name}" ] && [ ! -e "$HOME/${local.folder_name}" ]; then
-      ln -s "/workspaces/${local.folder_name}" "$HOME/${local.folder_name}" 2>/dev/null || true
-      chown -h 1000:1000 "$HOME/${local.folder_name}" 2>/dev/null || true
-    fi
-
     sudo apt update
 
     # Create certificate directory and copy system bundle for nested container runtimes
@@ -749,11 +695,6 @@ YAML
     "MISE_CACHE_DIR=/opt/mise/cache"
   ]
 
-  volumes {
-    container_path  = "/home/coder"
-    volume_name     = docker_volume.home_volume.name
-    selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
-  }
 
   volumes {
     container_path  = "/workspaces"
