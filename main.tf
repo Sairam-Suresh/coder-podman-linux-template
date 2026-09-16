@@ -139,11 +139,6 @@ data "coder_external_auth" "github" {
   id = "github"
 }
 
-resource "coder_ai_task" "task" {
-  count  = data.coder_workspace.me.start_count
-  app_id = module.copilot[count.index].task_app_id
-}
-
 module "git-commit-signing" {
   count    = data.coder_workspace.me.start_count
   source   = "registry.coder.com/coder/git-commit-signing/coder"
