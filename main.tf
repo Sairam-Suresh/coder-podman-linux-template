@@ -90,7 +90,7 @@ data "coder_parameter" "trusted" {
   type         = "bool"
   name         = "trusted"
   display_name = "Trusted?"
-  description  = "Mark this workspace directory as trusted to automatically authorize direnv executions."
+  description  = "Mark this workspace directory as trusted to automatically authorize mise configurations."
   default      = "false"
   mutable      = true
 }
@@ -169,13 +169,13 @@ resource "coder_agent" "main" {
       mkdir -p ${local.workdir}
     fi
 
-    # Automatically allow direnv if the workspace is marked as trusted
+    # Automatically trust mise configuration if the workspace is marked as trusted
     if [ "${data.coder_parameter.trusted.value}" = "true" ]; then
-      echo "Workspace is trusted. Waiting for .envrc to authorize direnv in background..."
+      echo "Workspace is trusted. Authorizing mise in background..."
       (
         for i in {1..30}; do
-          if [ -f "${local.workdir}/.envrc" ]; then
-            direnv allow "${local.workdir}"
+          if [ -d "${local.workdir}" ]; then
+            mise trust "${local.workdir}" 2>/dev/null || true
             break
           fi
           sleep 1
@@ -192,9 +192,9 @@ resource "coder_agent" "main" {
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
     DISPLAY             = ":1"
-    # Point the internal agent environment to the host's Nix daemon Unix socket
-    NIX_REMOTE      = "unix:///nix/var/nix/daemon-socket/socket"
-    CODER_AGENT_URL = local.coder_server_url
+    MISE_DATA_DIR       = "/opt/mise/data"
+    MISE_CACHE_DIR      = "/opt/mise/cache"
+    CODER_AGENT_URL     = local.coder_server_url
   }
 
   metadata {
@@ -564,20 +564,6 @@ EOF
   }
 }
 
-resource "terraform_data" "nix_daemon_bootstrap" {
-  provisioner "local-exec" {
-    command = <<EOT
-      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_store"
-      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman volume create --ignore shared_nix_var"
-      ssh -o StrictHostKeyChecking=no workspaces@host.containers.internal "podman run -d --name nix-daemon --replace --restart always --privileged \
-        -v shared_nix_store:/nix/store:z \
-        -v shared_nix_var:/nix/var:z \
-        -e NIX_CONFIG='experimental-features = flakes nix-command' \
-        docker.io/nixos/nix:latest nix-daemon"
-    EOT
-  }
-}
-
 resource "docker_container" "workspace" {
   count    = data.coder_workspace.me.start_count
   image    = local.container_image
@@ -605,6 +591,11 @@ resource "docker_container" "workspace" {
     set -e
     echo "Aligning home directory permissions..."
     sudo chown -R 1000:1000 "$HOME" || true
+
+    # Ensure shared Mise volume directories exist and are owned by coder
+    sudo mkdir -p /opt/mise/data /opt/mise/cache
+    sudo chown -R 1000:1000 /opt/mise
+    sudo chmod -R 775 /opt/mise
 
     sudo apt update
 
@@ -666,7 +657,9 @@ desktop:
 YAML
     fi
 
-    export PATH="$HOME/.local/bin:$PATH"
+    export MISE_DATA_DIR="/opt/mise/data"
+    export MISE_CACHE_DIR="/opt/mise/cache"
+    export PATH="/opt/mise/data/shims:$HOME/.local/bin:$PATH"
     export CODER_AGENT_URL="${local.coder_server_url}"
 
     # Now start the Coder agent (which will connect and then run startup_script)
@@ -678,7 +671,8 @@ YAML
     "CODER_AGENT_TOKEN=${coder_agent.main[count.index].token}",
     "CODER_AGENT_URL=${local.coder_server_url}",
     "INSTALL_DE=${data.coder_parameter.install_de.value}",
-    "NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket"
+    "MISE_DATA_DIR=/opt/mise/data",
+    "MISE_CACHE_DIR=/opt/mise/cache"
   ]
 
   volumes {
@@ -687,18 +681,17 @@ YAML
     selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
 
-  # Mount the shared Nix Store managed by the central nix-daemon container
+  # Mount shared Mise tools and plugins across workspaces
   volumes {
-    volume_name     = "shared_nix_store"
-    container_path  = "/nix/store"
+    volume_name     = "shared_mise_data"
+    container_path  = "/opt/mise/data"
     selinux_relabel = "z"
-    read_only       = true
   }
 
-  # Mount the shared Nix state and daemon socket managed by the central nix-daemon container
+  # Mount shared Mise download cache across workspaces
   volumes {
-    volume_name     = "shared_nix_var"
-    container_path  = "/nix/var"
+    volume_name     = "shared_mise_cache"
+    container_path  = "/opt/mise/cache"
     selinux_relabel = "z"
   }
 
@@ -736,8 +729,7 @@ YAML
 
   # Depend on firewall sidecar so network namespace exists
   depends_on = [
-    docker_container.firewall,
-    terraform_data.nix_daemon_bootstrap
+    docker_container.firewall
   ]
 
   labels {

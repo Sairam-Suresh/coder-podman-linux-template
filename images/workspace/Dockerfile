@@ -14,7 +14,6 @@ RUN apt-get update && \
     ca-certificates \
     curl \
     git \
-    direnv \
     vim \
     jq \
     locales \
@@ -36,13 +35,13 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-# Silence direnv's noisy exports globally
-ENV DIRENV_LOG_FORMAT=""
-
 # Install Node.js (needed for devcontainer support)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
       apt-get install -y nodejs && \
       rm -rf /var/lib/apt/lists/*
+
+# Install mise (polyglot runtime and tool version manager)
+RUN curl -fsSL https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh
 
 RUN echo "prefix=/home/coder/.local" > /etc/npmrc
 
@@ -54,38 +53,41 @@ RUN useradd coder \
     --user-group && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
-RUN mkdir -p /home/coder/.local/bin /home/coder/.local/lib && \
-    chown -R coder:coder /home/coder/.local
+RUN mkdir -p /home/coder/.local/bin /home/coder/.local/lib /opt/mise/data /opt/mise/cache && \
+    chown -R coder:coder /home/coder/.local /opt/mise && \
+    chmod -R 775 /opt/mise
 
 USER coder
 
-# Point Nix clients directly to the mounted socket of our shared Nix Daemon service
-ENV NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket
-ENV PATH=/home/coder/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/home/coder/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+# Configure Mise shared directories and environment paths
+ENV MISE_DATA_DIR=/opt/mise/data
+ENV MISE_CACHE_DIR=/opt/mise/cache
+ENV PATH=/opt/mise/data/shims:/home/coder/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
 # Define globally for standard reference
 ENV CERT_DIR=/home/coder/.local/share/ca-certificates
 
-# Dynamically source the Nix profile if the shared store gets mounted at runtime & enable direnv
-RUN echo 'if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; fi' >> ~/.bashrc && \
-    echo 'if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix.sh ]; then . /nix/var/nix/profiles/default/etc/profile.d/nix.sh; fi' >> ~/.bashrc && \
-    echo 'if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; fi' >> ~/.profile && \
-    echo 'if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix.sh ]; then . /nix/var/nix/profiles/default/etc/profile.d/nix.sh; fi' >> ~/.profile && \
-    echo 'export NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket' >> ~/.bashrc && \
-    echo 'eval "$(direnv hook bash)"' >> ~/.bashrc && \
-    echo 'export DIRENV_LOG_FORMAT=""' >> ~/.bashrc
+# Enable mise in user profile
+RUN echo 'eval "$(mise activate bash)"' >> ~/.bashrc && \
+    echo 'eval "$(mise activate bash --shims)"' >> ~/.profile
 
-# Ensure system-wide environments also have NIX_REMOTE, NPM configuration, and direnv presets
+# Ensure system-wide environments also have mise and NPM configuration
 USER root
-RUN echo 'export NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket' >> /etc/bash.bashrc && \
-    echo 'if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; fi' >> /etc/bash.bashrc && \
-    echo 'if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix.sh ]; then . /nix/var/nix/profiles/default/etc/profile.d/nix.sh; fi' >> /etc/bash.bashrc && \
-    echo 'export NIX_REMOTE=unix:///nix/var/nix/daemon-socket/socket' >> /etc/profile.d/nix.sh && \
+RUN echo 'export MISE_DATA_DIR=/opt/mise/data' >> /etc/bash.bashrc && \
+    echo 'export MISE_CACHE_DIR=/opt/mise/cache' >> /etc/bash.bashrc && \
+    echo 'export PATH="/opt/mise/data/shims:/home/coder/.local/bin:$PATH"' >> /etc/bash.bashrc && \
+    echo 'eval "$(mise activate bash)"' >> /etc/bash.bashrc && \
     echo 'export NPM_CONFIG_PREFIX="/home/coder/.local"' >> /etc/bash.bashrc && \
-    echo 'export PATH="/home/coder/.local/bin:$PATH"' >> /etc/bash.bashrc && \
+    echo 'export MISE_DATA_DIR=/opt/mise/data' >> /etc/profile.d/mise.sh && \
+    echo 'export MISE_CACHE_DIR=/opt/mise/cache' >> /etc/profile.d/mise.sh && \
+    echo 'export PATH="/opt/mise/data/shims:$PATH"' >> /etc/profile.d/mise.sh && \
     echo 'export NPM_CONFIG_PREFIX="/home/coder/.local"' >> /etc/profile.d/npm.sh && \
     echo 'export PATH="/home/coder/.local/bin:$PATH"' >> /etc/profile.d/npm.sh && \
-    echo 'eval "$(direnv hook bash)"' >> /etc/bash.bashrc && \
-    echo 'export DIRENV_LOG_FORMAT=""' >> /etc/bash.bashrc
+    if [ -f /etc/skel/.bashrc ]; then \
+        echo 'eval "$(mise activate bash)"' >> /etc/skel/.bashrc; \
+    fi && \
+    if [ -f /etc/skel/.profile ]; then \
+        echo 'eval "$(mise activate bash --shims)"' >> /etc/skel/.profile; \
+    fi
 USER coder
 
 # Set up local prefix to allow global npm installations without root permissions
