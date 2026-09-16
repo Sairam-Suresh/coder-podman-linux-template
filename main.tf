@@ -43,9 +43,9 @@ locals {
 
   # Select container image dynamically across the 4 workspace combinations
   container_image = (
-    data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? try(docker_image.workspace_desktop_podman[0].image_id, "") : (
-      data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? try(docker_image.workspace_desktop[0].image_id, "") : (
-        data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? try(docker_image.workspace_podman[0].image_id, "") : try(docker_image.workspace[0].image_id, "")
+    data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? docker_image.workspace_desktop_podman.image_id : (
+      data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? docker_image.workspace_desktop.image_id : (
+        data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? docker_image.workspace_podman.image_id : docker_image.workspace.image_id
       )
     )
   )
@@ -455,64 +455,56 @@ resource "docker_volume" "podman_cache" {
 
 # 1. Base CLI Workspace (Non-Podman)
 data "docker_registry_image" "workspace" {
-  count = data.coder_parameter.enable_devcontainer.value == "false" && data.coder_parameter.install_de.value == "false" ? 1 : 0
-  name  = "ghcr.io/sairam-suresh/workspace:latest"
+  name = "ghcr.io/sairam-suresh/workspace:latest"
 }
 
 resource "docker_image" "workspace" {
-  count         = data.coder_parameter.enable_devcontainer.value == "false" && data.coder_parameter.install_de.value == "false" ? 1 : 0
-  name          = "${replace(data.docker_registry_image.workspace[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace[0].sha256_digest}"
-  pull_triggers = [data.docker_registry_image.workspace[0].sha256_digest]
+  name          = "${replace(data.docker_registry_image.workspace.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace.sha256_digest}"
+  pull_triggers = [data.docker_registry_image.workspace.sha256_digest]
   triggers = {
-    digest = data.docker_registry_image.workspace[0].sha256_digest
+    digest = data.docker_registry_image.workspace.sha256_digest
   }
   keep_locally = true
 }
 
 # 2. CLI Workspace with Nested local Podman Engine
 data "docker_registry_image" "workspace_podman" {
-  count = data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? 1 : 0
-  name  = "ghcr.io/sairam-suresh/workspace-podman:latest"
+  name = "ghcr.io/sairam-suresh/workspace-podman:latest"
 }
 
 resource "docker_image" "workspace_podman" {
-  count         = data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? 1 : 0
-  name          = "${replace(data.docker_registry_image.workspace_podman[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_podman[0].sha256_digest}"
-  pull_triggers = [data.docker_registry_image.workspace_podman[0].sha256_digest]
+  name          = "${replace(data.docker_registry_image.workspace_podman.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_podman.sha256_digest}"
+  pull_triggers = [data.docker_registry_image.workspace_podman.sha256_digest]
   triggers = {
-    digest = data.docker_registry_image.workspace_podman[0].sha256_digest
+    digest = data.docker_registry_image.workspace_podman.sha256_digest
   }
   keep_locally = true
 }
 
 # 3. GUI Desktop Workspace (Non-Podman)
 data "docker_registry_image" "workspace_desktop" {
-  count = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? 1 : 0
-  name  = "ghcr.io/sairam-suresh/workspace-desktop:latest"
+  name = "ghcr.io/sairam-suresh/workspace-desktop:latest"
 }
 
 resource "docker_image" "workspace_desktop" {
-  count         = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? 1 : 0
-  name          = "${replace(data.docker_registry_image.workspace_desktop[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop[0].sha256_digest}"
-  pull_triggers = [data.docker_registry_image.workspace_desktop[0].sha256_digest]
+  name          = "${replace(data.docker_registry_image.workspace_desktop.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop.sha256_digest}"
+  pull_triggers = [data.docker_registry_image.workspace_desktop.sha256_digest]
   triggers = {
-    digest = data.docker_registry_image.workspace_desktop[0].sha256_digest
+    digest = data.docker_registry_image.workspace_desktop.sha256_digest
   }
   keep_locally = true
 }
 
 # 4. GUI Desktop Workspace with Nested local Podman Engine
 data "docker_registry_image" "workspace_desktop_podman" {
-  count = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? 1 : 0
-  name  = "ghcr.io/sairam-suresh/workspace-desktop-podman:latest"
+  name = "ghcr.io/sairam-suresh/workspace-desktop-podman:latest"
 }
 
 resource "docker_image" "workspace_desktop_podman" {
-  count         = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? 1 : 0
-  name          = "${replace(data.docker_registry_image.workspace_desktop_podman[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop_podman[0].sha256_digest}"
-  pull_triggers = [data.docker_registry_image.workspace_desktop_podman[0].sha256_digest]
+  name          = "${replace(data.docker_registry_image.workspace_desktop_podman.name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop_podman.sha256_digest}"
+  pull_triggers = [data.docker_registry_image.workspace_desktop_podman.sha256_digest]
   triggers = {
-    digest = data.docker_registry_image.workspace_desktop_podman[0].sha256_digest
+    digest = data.docker_registry_image.workspace_desktop_podman.sha256_digest
   }
   keep_locally = true
 }
