@@ -230,17 +230,9 @@ resource "coder_agent" "main" {
   }
 
   metadata {
-    display_name = "Home Disk (Host)"
+    display_name = "Disk Usage (Host)"
     key          = "4_home_disk"
     script       = "coder stat disk --path $${HOME}"
-    interval     = 60
-    timeout      = 1
-  }
-
-  metadata {
-    display_name = "Workspaces Disk (Host)"
-    key          = "6_workspaces_disk"
-    script       = "coder stat disk --path /workspaces"
     interval     = 60
     timeout      = 1
   }
@@ -324,30 +316,6 @@ module "antigravity" {
   })
 }
 
-module "copilot" {
-  source   = "registry.coder.com/coder-labs/copilot/coder"
-  version  = "0.3.0"
-  count    = data.coder_workspace.me.start_count
-  agent_id = coder_agent.main[count.index].id
-  workdir  = local.workdir
-
-  copilot_version = "1.0.13"
-
-  copilot_config = jsonencode({
-    banner = "never"
-    theme  = "dark"
-  })
-
-  ai_prompt = data.coder_task.me.prompt
-
-  pre_install_script = <<-EOT
-    if [ "${data.coder_parameter.install_de.value}" = "true" ]; then
-      npm install -g @playwright/cli@latest
-      playwright-cli install --skills
-    fi
-  EOT
-}
-
 module "git-clone" {
   count    = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_git_clone.value == "true") ? 1 : 0
   source   = "registry.coder.com/coder/git-clone/coder"
@@ -373,7 +341,6 @@ module "devcontainers-cli" {
   agent_id           = coder_agent.main[count.index].id
   start_blocks_login = false
 }
-
 
 resource "docker_volume" "home_volume" {
   name = "coder-${data.coder_workspace.me.name}-home"
