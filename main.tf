@@ -45,7 +45,7 @@ locals {
   container_image = (
     data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? try(docker_image.workspace_desktop_podman[0].image_id, "") : (
       data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? try(docker_image.workspace_desktop[0].image_id, "") : (
-        data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? try(docker_image.workspace_podman[0].image_id, "") : docker_image.workspace.image_id
+        data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? try(docker_image.workspace_podman[0].image_id, "") : try(docker_image.workspace[0].image_id, "")
       )
     )
   )
@@ -455,13 +455,18 @@ resource "docker_volume" "podman_cache" {
 
 # 1. Base CLI Workspace (Non-Podman)
 data "docker_registry_image" "workspace" {
-  name = "ghcr.io/sairam-suresh/workspace:latest"
+  count = data.coder_parameter.enable_devcontainer.value == "false" && data.coder_parameter.install_de.value == "false" ? 1 : 0
+  name  = "ghcr.io/sairam-suresh/workspace:latest"
 }
 
 resource "docker_image" "workspace" {
-  name          = data.docker_registry_image.workspace.name
-  pull_triggers = [data.docker_registry_image.workspace.sha256_digest]
-  keep_locally  = true
+  count         = data.coder_parameter.enable_devcontainer.value == "false" && data.coder_parameter.install_de.value == "false" ? 1 : 0
+  name          = "${replace(data.docker_registry_image.workspace[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace[0].sha256_digest}"
+  pull_triggers = [data.docker_registry_image.workspace[0].sha256_digest]
+  triggers = {
+    digest = data.docker_registry_image.workspace[0].sha256_digest
+  }
+  keep_locally = true
 }
 
 # 2. CLI Workspace with Nested local Podman Engine
@@ -472,9 +477,12 @@ data "docker_registry_image" "workspace_podman" {
 
 resource "docker_image" "workspace_podman" {
   count         = data.coder_parameter.enable_devcontainer.value == "true" && data.coder_parameter.install_de.value == "false" ? 1 : 0
-  name          = data.docker_registry_image.workspace_podman[0].name
+  name          = "${replace(data.docker_registry_image.workspace_podman[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_podman[0].sha256_digest}"
   pull_triggers = [data.docker_registry_image.workspace_podman[0].sha256_digest]
-  keep_locally  = true
+  triggers = {
+    digest = data.docker_registry_image.workspace_podman[0].sha256_digest
+  }
+  keep_locally = true
 }
 
 # 3. GUI Desktop Workspace (Non-Podman)
@@ -485,9 +493,12 @@ data "docker_registry_image" "workspace_desktop" {
 
 resource "docker_image" "workspace_desktop" {
   count         = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "false" ? 1 : 0
-  name          = data.docker_registry_image.workspace_desktop[0].name
+  name          = "${replace(data.docker_registry_image.workspace_desktop[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop[0].sha256_digest}"
   pull_triggers = [data.docker_registry_image.workspace_desktop[0].sha256_digest]
-  keep_locally  = true
+  triggers = {
+    digest = data.docker_registry_image.workspace_desktop[0].sha256_digest
+  }
+  keep_locally = true
 }
 
 # 4. GUI Desktop Workspace with Nested local Podman Engine
@@ -498,9 +509,12 @@ data "docker_registry_image" "workspace_desktop_podman" {
 
 resource "docker_image" "workspace_desktop_podman" {
   count         = data.coder_parameter.install_de.value == "true" && data.coder_parameter.enable_devcontainer.value == "true" ? 1 : 0
-  name          = data.docker_registry_image.workspace_desktop_podman[0].name
+  name          = "${replace(data.docker_registry_image.workspace_desktop_podman[0].name, "/:[^:]*$/", "")}@${data.docker_registry_image.workspace_desktop_podman[0].sha256_digest}"
   pull_triggers = [data.docker_registry_image.workspace_desktop_podman[0].sha256_digest]
-  keep_locally  = true
+  triggers = {
+    digest = data.docker_registry_image.workspace_desktop_podman[0].sha256_digest
+  }
+  keep_locally = true
 }
 
 # 5. Firewall Sidecar Image
