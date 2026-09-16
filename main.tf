@@ -522,7 +522,7 @@ resource "docker_container" "firewall" {
   image = docker_image.firewall.image_id
   name  = "${local.resource_name}-firewall"
 
-  network_mode = "pasta:--map-guest-addr,${local.coder_server_ip},-t,none,-T,none,-u,auto"
+  network_mode = "pasta:--map-guest-addr,${local.coder_server_ip},-t,none,-T,none,-u,none"
 
   capabilities {
     add = ["NET_ADMIN"]
@@ -531,14 +531,17 @@ resource "docker_container" "firewall" {
   entrypoint = ["/bin/sh", "-c"]
   command = [<<-EOT
     set -e
-    apk add --no-cache nftables
+    apk add --no-cache nftables ethtool iproute2
 
+    # Fast-path nftables configuration (established/related traffic accepted immediately)
     cat <<EOF > /etc/nftables.conf
 flush ruleset
 
 table inet filter {
   chain input {
     type filter hook input priority 0; policy accept;
+    ct state established,related accept
+    ct state invalid drop
   }
   chain forward {
     type filter hook forward priority 0; policy accept;
@@ -549,18 +552,19 @@ table inet filter {
     # 1. Allow loopback traffic
     oif "lo" accept
 
-    # 2. Allow DHCP configuration requests
+    # 2. Fast-path established & related return traffic (highest volume)
+    ct state established,related accept
+    ct state invalid drop
+
+    # 3. Allow DHCP configuration requests
     udp dport 67 accept
 
-    # 3. Allow DNS resolution
+    # 4. Allow DNS resolution
     udp dport 53 accept
     tcp dport 53 accept
 
-    # 4. Allow STUN discovery for direct connections
+    # 5. Allow STUN discovery for direct connections
     udp dport 3478 accept
-
-    # 5. Allow established & related return traffic
-    ct state established,related accept
 
     # 6. Explicitly allow outbound traffic to the Coder server
     ip daddr ${local.coder_server_ip} tcp dport ${local.coder_server_port} accept
@@ -585,7 +589,34 @@ EOF
     echo "[Firewall] Applying nftables configuration..."
     nft -f /etc/nftables.conf
 
-    echo "[Firewall] Firewall rules applied successfully. Keeping sidecar active..."
+    # Optimize TAP network interface offloading (TSO/GSO/GRO) and queue length
+    IFACE=$(ip -o link show | awk -F': ' '$2 != "lo" {print $2; exit}')
+    if [ -n "$IFACE" ]; then
+      echo "[Network Tuning] Enabling TSO, GSO, GRO and enlarging txqueuelen on $IFACE..."
+      ethtool -K "$IFACE" rx on tx on sg on tso on gso on gro on 2>/dev/null || true
+      ip link set dev "$IFACE" txqueuelen 10000 2>/dev/null || true
+    fi
+
+    # Tune namespaced TCP socket and buffer limits for high-bandwidth connections
+    echo "[Network Tuning] Applying TCP socket and buffer tuning..."
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null || true
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null || true
+    sysctl -w net.core.rmem_default=1048576 2>/dev/null || true
+    sysctl -w net.core.wmem_default=1048576 2>/dev/null || true
+    sysctl -w net.ipv4.tcp_rmem="4096 87380 16777216" 2>/dev/null || true
+    sysctl -w net.ipv4.tcp_wmem="4096 65536 16777216" 2>/dev/null || true
+    sysctl -w net.core.netdev_max_backlog=10000 2>/dev/null || true
+    sysctl -w net.core.somaxconn=8192 2>/dev/null || true
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null || true
+    sysctl -w net.ipv4.tcp_window_scaling=1 2>/dev/null || true
+    sysctl -w net.ipv4.tcp_sack=1 2>/dev/null || true
+    sysctl -w net.ipv4.tcp_fastopen=3 2>/dev/null || true
+
+    if grep -q bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+      sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null || true
+    fi
+
+    echo "[Firewall] Firewall & network tuning applied successfully. Keeping sidecar active..."
     exec sleep infinity
   EOT
   ]
