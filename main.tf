@@ -375,6 +375,29 @@ module "devcontainers-cli" {
 }
 
 
+resource "docker_volume" "home_volume" {
+  name = "coder-${data.coder_workspace.me.name}-home"
+  lifecycle {
+    ignore_changes = all
+  }
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name_at_creation"
+    value = data.coder_workspace.me.name
+  }
+}
+
 resource "docker_volume" "workspaces_volume" {
   name = "coder-${data.coder_workspace.me.name}-workspaces"
   lifecycle {
@@ -695,6 +718,12 @@ YAML
     "MISE_CACHE_DIR=/opt/mise/cache"
   ]
 
+
+  volumes {
+    container_path  = "/home/coder"
+    volume_name     = docker_volume.home_volume.name
+    selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
+  }
 
   volumes {
     container_path  = "/workspaces"
