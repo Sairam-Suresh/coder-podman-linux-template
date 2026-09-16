@@ -53,9 +53,9 @@ RUN useradd coder \
     --user-group && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
-RUN mkdir -p /home/coder/.local/bin /home/coder/.local/lib /opt/mise/data /opt/mise/cache && \
-    chown -R coder:coder /home/coder/.local /opt/mise && \
-    chmod -R 775 /opt/mise
+RUN mkdir -p /workspaces /home/coder/.local/bin /home/coder/.local/lib /opt/mise/data /opt/mise/cache && \
+    chown -R coder:coder /workspaces /home/coder/.local /opt/mise && \
+    chmod -R 775 /workspaces /opt/mise
 
 USER coder
 

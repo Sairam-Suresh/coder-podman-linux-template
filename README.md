@@ -35,9 +35,15 @@ This template provisions the following resources:
 
 - Docker image (built by Docker socket and kept locally)
 - Docker container pod (ephemeral)
-- Docker volume (persistent on `/home/coder`)
+- Docker volume (`/workspaces`) - Dedicated persistent storage for project and git repository data
+- Docker volume (`/home/coder`) - User home directory volume (can be removed in the future for seamless image updates)
 
-This means, when the workspace restarts, any tools or files outside of the home directory are not persisted. To pre-bake tools into the workspace (e.g. `python3`), modify the container image. Alternatively, individual developers can [personalize](https://coder.com/docs/dotfiles) their workspaces with dotfiles.
+### Workspace Directory Structure & Migration
+
+Repositories and custom folders are placed in `/workspaces/<folder-name>` owned by the `coder` user (`1000:1000`).
+
+- **Automatic Migration**: On startup, existing workspaces with projects in `/home/coder/<folder-name>` or git repositories directly in `~` are automatically moved to `/workspaces/<folder-name>`, and a backward-compatible symlink is created in `~` to ensure uninterrupted paths.
+- **Future Image Updates**: By separating project storage into `/workspaces`, the `/home/coder` volume mount can safely be removed in the future so that changes and tools in the base image's home directory are always up to date.
 
 > **Note**
 > This template is designed to be a starting point! Edit the Terraform to extend the template to support your use case.

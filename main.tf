@@ -33,7 +33,7 @@ locals {
 
   # Calculate the working directory based on git clone settings
   folder_name = data.coder_parameter.enable_git_clone.value == "true" ? replace(basename(try(data.coder_parameter.repo_url[0].value, "")), "/\\.git$/", "") : try(data.coder_parameter.manual_folder_name[0].value, "")
-  workdir     = "/home/coder/${local.folder_name}"
+  workdir     = "/workspaces/${local.folder_name}"
 
   # Whether GPU device mounts should be enabled (true when install_de is selected)
   enable_gpu = data.coder_parameter.install_de.value == "true" ? true : (data.coder_parameter.enable_gpu.value == "true")
@@ -126,7 +126,7 @@ data "coder_parameter" "manual_folder_name" {
   type         = "string"
   name         = "manual_folder_name"
   display_name = "New Folder Name"
-  description  = "Enter the name of the folder to create in your home directory."
+  description  = "Enter the name of the folder to create in /workspaces."
   default      = "my-workspace"
 }
 
@@ -233,6 +233,14 @@ resource "coder_agent" "main" {
     display_name = "Home Disk (Host)"
     key          = "4_home_disk"
     script       = "coder stat disk --path $${HOME}"
+    interval     = 60
+    timeout      = 1
+  }
+
+  metadata {
+    display_name = "Workspaces Disk (Host)"
+    key          = "6_workspaces_disk"
+    script       = "coder stat disk --path /workspaces"
     interval     = 60
     timeout      = 1
   }
@@ -346,7 +354,7 @@ module "git-clone" {
   version  = "~> 1.0"
   agent_id = coder_agent.main[0].id
   url      = data.coder_parameter.repo_url[0].value
-  base_dir = "/home/coder"
+  base_dir = "/workspaces"
 }
 
 module "kasmvnc" {
@@ -368,6 +376,29 @@ module "devcontainers-cli" {
 
 resource "docker_volume" "home_volume" {
   name = "coder-${data.coder_workspace.me.name}-home"
+  lifecycle {
+    ignore_changes = all
+  }
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name_at_creation"
+    value = data.coder_workspace.me.name
+  }
+}
+
+resource "docker_volume" "workspaces_volume" {
+  name = "coder-${data.coder_workspace.me.name}-workspaces"
   lifecycle {
     ignore_changes = all
   }
@@ -597,6 +628,43 @@ resource "docker_container" "workspace" {
     sudo chown -R 1000:1000 /opt/mise
     sudo chmod -R 775 /opt/mise
 
+    # Ensure /workspaces directory exists and is owned by coder
+    sudo mkdir -p /workspaces
+    sudo chown -R 1000:1000 /workspaces
+    sudo chmod 775 /workspaces
+
+    # Migrate existing workspace folder from /home/coder to /workspaces if present
+    if [ -n "${local.folder_name}" ] && [ -d "$HOME/${local.folder_name}" ] && [ ! -L "$HOME/${local.folder_name}" ]; then
+      if [ ! -e "/workspaces/${local.folder_name}" ]; then
+        echo "Migrating primary workspace folder $HOME/${local.folder_name} to /workspaces/${local.folder_name}..."
+        mv "$HOME/${local.folder_name}" "/workspaces/${local.folder_name}"
+        ln -s "/workspaces/${local.folder_name}" "$HOME/${local.folder_name}"
+        chown -h 1000:1000 "$HOME/${local.folder_name}" || true
+        chown -R 1000:1000 "/workspaces/${local.folder_name}" || true
+        echo "Migration complete with backward-compatibility symlink."
+      fi
+    fi
+
+    # Migrate any additional git repositories located under $HOME to /workspaces
+    for dir in "$HOME"/*; do
+      if [ -d "$dir" ] && [ ! -L "$dir" ] && [ -d "$dir/.git" ]; then
+        repo_name=$(basename "$dir")
+        if [ ! -e "/workspaces/$repo_name" ]; then
+          echo "Migrating git repository $dir to /workspaces/$repo_name..."
+          mv "$dir" "/workspaces/$repo_name"
+          ln -s "/workspaces/$repo_name" "$dir"
+          chown -h 1000:1000 "$dir" || true
+          chown -R 1000:1000 "/workspaces/$repo_name" || true
+        fi
+      fi
+    done
+
+    # Ensure backward-compatibility symlink from $HOME to /workspaces for the primary folder
+    if [ -n "${local.folder_name}" ] && [ -e "/workspaces/${local.folder_name}" ] && [ ! -e "$HOME/${local.folder_name}" ]; then
+      ln -s "/workspaces/${local.folder_name}" "$HOME/${local.folder_name}" 2>/dev/null || true
+      chown -h 1000:1000 "$HOME/${local.folder_name}" 2>/dev/null || true
+    fi
+
     sudo apt update
 
     # Create certificate directory and copy system bundle for nested container runtimes
@@ -681,6 +749,12 @@ YAML
     selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
   }
 
+  volumes {
+    container_path  = "/workspaces"
+    volume_name     = docker_volume.workspaces_volume.name
+    selinux_relabel = data.coder_parameter.enable_devcontainer.value == "true" ? "z" : "Z"
+  }
+
   # Mount shared Mise tools and plugins across workspaces
   volumes {
     volume_name     = "shared_mise_data"
@@ -760,7 +834,7 @@ module "code-server-subagent" {
   count      = (data.coder_workspace.me.start_count > 0 && data.coder_parameter.enable_devcontainer.value == "true") ? 1 : 0
   source     = "registry.coder.com/coder/code-server/coder"
   version    = "~> 1.0"
-  folder     = "/workspaces/${local.folder_name}"
+  folder     = local.workdir
   extensions = ["catppuccin.catppuccin-vsc-icons", "github.vscode-pull-request-github", "catppuccin.catppuccin-vsc"]
 
   open_in = "tab"
